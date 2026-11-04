@@ -224,3 +224,12 @@ class PillButton(tk.Canvas):
             except tk.TclError:
                 pass
         super().destroy()
+
+
+
+def pop_event_batch(pending: list, limit: int = 200) -> list:
+    """Remove at most limit queued events for one responsive UI update."""
+    limit = max(1, int(limit))
+    batch = pending[:limit]
+    del pending[:limit]
+    return batch
