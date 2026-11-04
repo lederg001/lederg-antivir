@@ -944,22 +944,76 @@ class App(tk.Tk):
         except (AttributeError, tk.TclError):
             pass
 
-    def _toggle_auto_protection(self):
-        if not self.auto_protect_enabled and not is_admin():
-            messagebox.showwarning(
-                APP,
-                "Для автоизоляции нужны права администратора.\n"
-                "Обычный мониторинг продолжит работать. Перезапусти LEDERG ANTIVIR от имени администратора.",
+    def _sync_autostart_button(self):
+        try:
+            self.startup_button.configure(
+                text="ЗАПУСК С WINDOWS: ВКЛ" if self.autostart_enabled else "ЗАПУСК С WINDOWS: ВЫКЛ",
+                bg="#176548" if self.autostart_enabled else PANEL_ALT,
+                activebackground="#21875f" if self.autostart_enabled else "#263244",
             )
+        except (AttributeError, tk.TclError):
+            pass
+
+    def _toggle_autostart(self):
+        enabled = not self.autostart_enabled
+        if enabled and not messagebox.askyesno(
+            APP,
+            "Добавить LEDERG ANTIVIR в автозагрузку текущего пользователя?\n\n"
+            "После входа в Windows программа запустится скрытой в системном трее. "
+            "Настройка автозащиты сохранится отдельно.",
+        ):
             return
-        self.auto_protect_enabled = not self.auto_protect_enabled
-        self.monitor.auto_block = self.auto_protect_enabled
-        self.monitor.auto_quarantine = self.auto_protect_enabled
+        try:
+            set_run_at_logon(enabled, self._autostart_command() if enabled else None)
+            self.autostart_enabled = enabled
+            self._sync_autostart_button()
+            self.status.set(
+                "Автозапуск LEDERG ANTIVIR включён для текущего пользователя."
+                if enabled else "Автозапуск LEDERG ANTIVIR отключён."
+            )
+        except Exception as exc:
+            messagebox.showerror(APP, f"Не удалось изменить автозапуск: {exc}")
+
+    def _toggle_auto_protection(self):
+        enabled = not self.auto_protect_enabled
+        if enabled:
+            limitations = (
+                "\n\nПриложение сейчас запущено без прав администратора. "
+                "Остановка и карантин доступных пользовательских файлов будут работать, "
+                "но правило Windows Firewall может потребовать запуск от администратора."
+            ) if not is_admin() else ""
+            confirmed = messagebox.askyesno(
+                APP,
+                "Включить постоянную автозащиту?\n\n"
+                "Она вмешивается только при точном совпадении известного IOC: "
+                "блокирует исходящие подключения, пытается остановить процесс и изолировать файл. "
+                "Обычные неизвестные программы автоматически не удаляются."
+                + limitations
+                + "\n\nВключить запуск LEDERG вместе с Windows, чтобы защита восстановилась после перезагрузки?",
+            )
+            if not confirmed:
+                return
+            if not self.autostart_enabled:
+                try:
+                    set_run_at_logon(True, self._autostart_command())
+                    self.autostart_enabled = True
+                    self._sync_autostart_button()
+                except Exception as exc:
+                    if not messagebox.askyesno(
+                        APP,
+                        f"Не удалось добавить приложение в автозагрузку: {exc}\n\n"
+                        "Включить автозащиту только до следующего выхода из Windows?",
+                    ):
+                        return
+        self.auto_protect_enabled = enabled
+        self.monitor.auto_block = enabled
+        self.monitor.auto_quarantine = enabled
+        self._save_settings()
         self._sync_auto_button()
-        if self.auto_protect_enabled:
-            self.status.set("АВТОЗАЩИТА ВКЛ: точные IOC → блокировка сети → остановка процесса → карантин файла.")
+        if enabled:
+            self.status.set("АВТОЗАЩИТА ВКЛ: точный IOC → блокировка сети → остановка процесса → карантин. Настройка сохранена.")
         else:
-            self.status.set("Автозащита выключена. Мониторинг продолжает работать.")
+            self.status.set("Автозащита выключена. Состояние сохранено; сетевой монитор продолжает работать.")
 
     def _update_stats_display(self):
         suspicious = sum(1 for event in self.network_events if event.score >= 35)
@@ -1058,13 +1112,9 @@ class App(tk.Tk):
 
     def quick_scan(self):
         self.scan_button.configure(state="disabled", text="ПРОВЕРКА ВЫПОЛНЯЕТСЯ…")
-        self.hero_status.configure(text="ИДЁТ ПРОВЕРКА СИСТЕМЫ", fg=AMBER)
+        self.hero_status.configure(text="ИДЁТ НЕЗАВИСИМАЯ ПРОВЕРКА", fg=AMBER)
         self.scan_progress.start(12)
-        try:
-            pid = start_defender_scan("QuickScan")
-            self.status.set(f"Microsoft Defender: быстрая проверка запущена (PID {pid}).")
-        except Exception as exc:
-            self.status.set(f"Defender Quick Scan недоступен: {exc}. Продолжаю локальную проверку.")
+        self.status.set("LEDERG проверяет локальные файлы, сетевые процессы и точки автозагрузки. Сторонний антивирус для этого не требуется.")
         local_appdata = Path(os.environ.get("LOCALAPPDATA", Path.home()))
         appdata = Path(os.environ.get("APPDATA", Path.home()))
         program_data = Path(os.environ.get("PROGRAMDATA", "C:/ProgramData"))
@@ -1077,6 +1127,7 @@ class App(tk.Tk):
             program_data / "Microsoft/Windows/Start Menu/Programs/Startup",
         ]
         self._scan_roots(candidates)
+        self.scan_startup()
 
     def scan_folder(self):
         folder = filedialog.askdirectory(title="Выберите папку для проверки")
@@ -1386,7 +1437,15 @@ class App(tk.Tk):
             messagebox.showerror(APP, str(exc))
 
     def _close(self):
+        self._hide_to_tray()
+
+    def _shutdown(self):
         self.monitor.stop()
+        try:
+            if self.tray_icon is not None:
+                self.tray_icon.stop()
+        except Exception:
+            pass
         self.destroy()
 
 
