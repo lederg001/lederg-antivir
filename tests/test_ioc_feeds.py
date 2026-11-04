@@ -80,3 +80,16 @@ def test_feed_update_uses_key_for_requests_but_never_persists_it(monkeypatch, tm
     assert len(calls) == 2
     assert all(call[1] == "fake-test-auth-key-123456" for call in calls)
     assert "fake-test-auth-key-123456" not in saved
+
+
+def test_merge_prunes_iocs_older_than_six_months():
+    from src.antivir.ioc_feeds import merge_feed_payloads
+
+    old = {
+        "hashes": {"f" * 64: {"family": "OldStealer", "first_seen": "2025-01-01T00:00:00Z"}},
+        "domains": {"old.example": {"family": "OldStealer", "first_seen": "2025-01-01T00:00:00Z"}},
+    }
+    result = merge_feed_payloads({}, {}, existing=old)
+
+    assert "f" * 64 not in result["hashes"]
+    assert "old.example" not in result["domains"]
