@@ -5,6 +5,7 @@ import sys
 import threading
 import tkinter as tk
 import webbrowser
+from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -20,7 +21,7 @@ from antivir.network import (
 from antivir.protection import ProtectionCheck, get_security_posture
 from antivir.threat_intel import (
     ATTACK_TECHNIQUES, COMMON_BEHAVIORS, PROTECTION_GUIDANCE,
-    SOURCES, THREAT_FEEDS, TRACKED_FAMILIES,
+    COMMON_SERVICE_DOMAINS, SOURCES, THREAT_FEEDS, TRACKED_FAMILIES,
 )
 
 APP = "LEDERG ANTIVIR"
@@ -94,11 +95,6 @@ class App(tk.Tk):
             "Vertical.TScrollbar", background=PANEL_ALT, troughcolor=PANEL_SOFT,
             bordercolor=PANEL_SOFT, arrowcolor=MUTED,
         )
-
-    def _panel(self, parent, padding=16, background=PANEL):
-        frame = tk.Frame(parent, bg=background, highlightthickness=1, highlightbackground=BORDER)
-        frame.pack_propagate(False) if False else None
-        return frame
 
     def _button(self, parent, label, command, primary=False, compact=False, danger=False):
         background = RED if primary else RED_DARK if danger else PANEL_ALT
@@ -503,6 +499,25 @@ class App(tk.Tk):
                      bg=PANEL, fg=MUTED, font=("Segoe UI", 8), wraplength=950,
                      justify="left").pack(anchor="w", padx=16, pady=(0, 5))
             tk.Frame(panel, bg=BORDER, height=1).pack(fill="x", padx=16, pady=(2, 0))
+
+        domains_panel = tk.Frame(self.page_host, bg=PANEL, highlightthickness=1, highlightbackground=BORDER)
+        domains_panel.pack(fill="x", pady=(0, 12))
+        tk.Label(domains_panel, text="СПРАВОЧНИК ОБЫЧНЫХ СЕРВИСОВ И ДОМЕНОВ",
+                 bg=PANEL, fg=TEXT, font=("Segoe UI Semibold", 10)).pack(anchor="w", padx=16, pady=(12, 6))
+        for service in COMMON_SERVICE_DOMAINS:
+            tk.Label(
+                domains_panel,
+                text=f"{service['service']}:  " + "  ·  ".join(service["domains"]),
+                bg=PANEL, fg=MUTED, font=("Segoe UI", 8), wraplength=950,
+                justify="left",
+            ).pack(anchor="w", padx=16, pady=3)
+        tk.Label(
+            domains_panel,
+            text="Это справочник, а не безусловный whitelist: текущий датчик видит IP:порт и не может надёжно связать IP с доменом и конкретным процессом.",
+            bg=PANEL, fg=AMBER, font=("Segoe UI", 8), wraplength=950,
+            justify="left",
+        ).pack(anchor="w", padx=16, pady=(7, 12))
+
         warning = tk.Frame(self.page_host, bg="#1b1720", highlightthickness=1, highlightbackground="#5d2634")
         warning.pack(fill="x", pady=(0, 10))
         tk.Label(warning, text="ПОЧЕМУ НЕТ ГЛОБАЛЬНОГО СПИСКА «БЕЗОПАСНЫХ ДОМЕНОВ»",
@@ -607,7 +622,7 @@ class App(tk.Tk):
         details = "; ".join(result.reasons) if result.reasons else "Явных локальных IOC не найдено"
         iid = self.scan_tree.insert(
             "", "end",
-            values=(result.path.stat().st_mtime if result.path.exists() else "SCAN",
+            values=(datetime.now().strftime("%H:%M"),
                     result.path.name, f"{result.score}/100", state, details),
             tags=("critical" if result.score >= 80 else "warning" if result.score >= 35 else "clean",),
         )
@@ -727,6 +742,7 @@ class App(tk.Tk):
         def worker():
             count = 0
             isolated = 0
+            critical = 0
             for root in roots:
                 try:
                     root = Path(root)
@@ -744,7 +760,7 @@ class App(tk.Tk):
                         file_iter = None
 
                     def inspect(path: Path):
-                        nonlocal count, isolated
+                        nonlocal count, isolated, critical
                         if path.suffix.lower() not in {".exe", ".dll", ".scr", ".bat", ".cmd", ".ps1"}:
                             return
                         path_key = str(path.resolve()).casefold()
@@ -756,6 +772,8 @@ class App(tk.Tk):
                         except (OSError, ValueError):
                             return
                         count += 1
+                        if result.score >= 80:
+                            critical += 1
                         if self.auto_protect_enabled and is_exact_ioc_file(path):
                             try:
                                 item = quarantine_file(path, QUARANTINE)
@@ -782,23 +800,37 @@ class App(tk.Tk):
                 except (OSError, PermissionError):
                     continue
             try:
-                self.after(0, lambda n=count, q=isolated: self._finish_scan(n, q))
+                self.after(0, lambda n=count, q=isolated, c=critical: self._finish_scan(n, q, c))
             except RuntimeError:
                 pass
 
         threading.Thread(target=worker, name="LEDERG-FileScan", daemon=True).start()
 
-    def _finish_scan(self, count: int, isolated: int):
-        self.scan_progress.stop()
-        self.scan_button.configure(state="normal", text="⛨  ПРОВЕРИТЬ СИСТЕМУ")
-        critical = sum(1 for result in self.scan_results if result.score >= 80)
-        if critical:
-            self.hero_status.configure(text=f"ОБНАРУЖЕНО КРИТИЧЕСКИХ ОБЪЕКТОВ: {critical}", fg=RED_HOVER)
-        else:
-            self.hero_status.configure(text="ПРОВЕРКА ЗАВЕРШЕНА", fg=GREEN)
+    def _finish_scan(self, count: int, isolated: int, critical: int):
+        try:
+            if self.scan_progress.winfo_exists():
+                self.scan_progress.stop()
+            if self.scan_button.winfo_exists():
+                self.scan_button.configure(state="normal", text="⛨  ПРОВЕРИТЬ СИСТЕМУ")
+            if self.hero_status.winfo_exists():
+                self.hero_status.configure(
+                    text=f"ОБНАРУЖЕНО КРИТИЧЕСКИХ ОБЪЕКТОВ: {critical}" if critical else "ПРОВЕРКА ЗАВЕРШЕНА",
+                    fg=RED_HOVER if critical else GREEN,
+                )
+        except tk.TclError:
+            pass
         self.status.set(f"Проверка завершена. Файлов: {count} · критических: {critical} · автоматически изолировано: {isolated}.")
-        self.refresh_quarantine()
-        if count == 0:
+        self._refresh_quarantine_count()
+        if count:
+            detail = (
+                f"Проверено файлов: {count}\n"
+                f"Критических совпадений: {critical}\n"
+                f"Автоматически помещено в карантин: {isolated}\n\n"
+                + ("Открой результаты и проверь оставшиеся сигналы." if critical > isolated
+                   else "Критических совпадений не обнаружено.")
+            )
+            messagebox.showinfo(APP, detail)
+        else:
             messagebox.showinfo(APP, "В выбранных папках не найдено поддерживаемых файлов для локального анализа. Microsoft Defender работает отдельно.")
 
     def _selected_network_event(self):
