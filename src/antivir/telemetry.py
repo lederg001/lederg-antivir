@@ -129,7 +129,7 @@ def assess_sysmon_event(event: SysmonEvent):
             "\\currentversion\\run",
             "\\currentversion\\runonce",
             "\\image file execution options",
-            "\\services\\\",
+            "\\services",
         )
         if any(marker in target for marker in autorun_markers):
             category, score = "persistence", 55
