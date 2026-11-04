@@ -4,7 +4,6 @@ import hashlib
 import json
 import os
 import shutil
-import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,7 +23,7 @@ class QuarantineItem:
 
 SUSPICIOUS_PATHS = ("\\windowshelper\\", "\\cloudsyncdata\\", "\\cloudsyncwatcher\\", "\\sys_")
 SUSPICIOUS_NAMES = ("svchost32.exe", "cloudsynchost.exe", "csyncwatch.exe")
-PROTECTED_ROOTS = tuple(Path(os.environ.get("SystemRoot", r"C:\Windows")).resolve().parents) + (
+PROTECTED_ROOTS = (
     Path(os.environ.get("SystemRoot", r"C:\Windows")).resolve(),
     Path(os.environ.get("ProgramFiles", r"C:\Program Files")).resolve(),
     Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")).resolve(),
@@ -68,10 +67,10 @@ def _is_protected(path: Path) -> bool:
 
 def quarantine_file(source: Path, quarantine_dir: Path) -> QuarantineItem:
     source = Path(source).expanduser().resolve()
-    if not source.is_file():
-        raise FileNotFoundError(source)
     if _is_protected(source):
         raise ValueError("Protected system/program path is not allowed")
+    if not source.is_file():
+        raise FileNotFoundError(source)
     quarantine_dir = Path(quarantine_dir).expanduser().resolve()
     quarantine_dir.mkdir(parents=True, exist_ok=True)
     digest = _sha256(source)
