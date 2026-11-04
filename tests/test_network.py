@@ -85,3 +85,58 @@ def test_firewall_rule_can_be_removed_after_executable_is_gone(tmp_path):
     assert any("Outbound" in item for item in blocked_args)
     assert "delete" in remove_args
     assert "name=" in remove_args[-1]
+
+
+def test_signed_opera_installed_in_expected_directory_is_trusted():
+    result = assess_connection(
+        process_name="opera.exe",
+        process_path=r"C:\Users\tester\AppData\Local\Programs\Opera\opera.exe",
+        remote_address="185.26.182.11",
+        remote_port=443,
+        status="ESTABLISHED",
+        publisher="CN=Opera Software AS, O=Opera Norway AS",
+        signature_valid=True,
+    )
+    assert result.score == 0
+    assert result.trusted_application is True
+    assert result.auto_block_eligible is False
+
+
+def test_signed_discord_installed_in_expected_directory_is_trusted():
+    result = assess_connection(
+        process_name="Discord.exe",
+        process_path=r"C:\Users\tester\AppData\Local\Discord\app-1.0.9000\Discord.exe",
+        remote_address="162.159.128.233",
+        remote_port=443,
+        status="ESTABLISHED",
+        publisher="CN=Discord Inc.",
+        signature_valid=True,
+    )
+    assert result.score == 0
+    assert result.trusted_application is True
+
+
+def test_unsigned_discord_named_executable_is_not_trusted():
+    result = assess_connection(
+        process_name="Discord.exe",
+        process_path=r"C:\Users\tester\AppData\Local\Temp\Discord.exe",
+        remote_address="162.159.128.233",
+        remote_port=443,
+        status="ESTABLISHED",
+    )
+    assert result.trusted_application is False
+    assert result.score > 0
+
+
+def test_signed_opera_in_unexpected_path_is_not_trusted():
+    result = assess_connection(
+        process_name="opera.exe",
+        process_path=r"C:\Users\tester\AppData\Local\Temp\opera.exe",
+        remote_address="185.26.182.11",
+        remote_port=443,
+        status="ESTABLISHED",
+        publisher="CN=Opera Software AS, O=Opera Norway AS",
+        signature_valid=True,
+    )
+    assert result.trusted_application is False
+    assert result.score > 0
