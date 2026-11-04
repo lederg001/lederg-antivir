@@ -3,6 +3,7 @@ from __future__ import annotations
 import ctypes
 import hashlib
 import ipaddress
+import json
 import os
 import socket
 import subprocess
@@ -10,15 +11,49 @@ import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Callable
 
 import psutil
+
+from antivir.core import is_exact_ioc_file, quarantine_file
 
 KNOWN_BAD_NAMES = {"svchost32.exe", "cloudsynchost.exe", "csyncwatch.exe"}
 KNOWN_BAD_PATHS = ("\\windowshelper\\", "\\cloudsyncdata\\", "\\cloudsyncwatcher\\")
 WRITABLE_MARKERS = ("\\appdata\\", "\\temp\\", "\\downloads\\", "\\public\\")
 PROTECTED_PROCESS_NAMES = {"winws.exe", "zapret.exe", "cloudflarewarp.exe", "warp-svc.exe", "warp-cli.exe"}
+
+# Trust is granted only when the executable is in its normal installation tree
+# AND Windows reports a valid Authenticode signature from the expected publisher.
+TRUSTED_APP_RULES = {
+    "opera.exe": {
+        "paths": ("\\appdata\\local\\programs\\opera\\", "\\program files\\opera\\"),
+        "publishers": ("opera software", "opera norway"),
+    },
+    "discord.exe": {
+        "paths": ("\\appdata\\local\\discord\\app-", "\\program files\\discord\\"),
+        "publishers": ("discord inc",),
+    },
+    "chrome.exe": {
+        "paths": ("\\appdata\\local\\google\\chrome\\application\\", "\\program files\\google\\chrome\\application\\"),
+        "publishers": ("google llc",),
+    },
+    "msedge.exe": {
+        "paths": ("\\program files (x86)\\microsoft\\edge\\application\\", "\\program files\\microsoft\\edge\\application\\"),
+        "publishers": ("microsoft corporation",),
+    },
+    "firefox.exe": {
+        "paths": ("\\program files\\mozilla firefox\\", "\\appdata\\local\\mozilla firefox\\"),
+        "publishers": ("mozilla corporation",),
+    },
+    "brave.exe": {
+        "paths": ("\\appdata\\local\\bravesoftware\\brave-browser\\application\\", "\\program files\\bravesoftware\\brave-browser\\application\\"),
+        "publishers": ("brave software",),
+    },
+}
+
+_signature_cache: dict[str, tuple[float, int, bool, str | None]] = {}
+_signature_cache_lock = threading.Lock()
 
 
 @dataclass
@@ -27,6 +62,7 @@ class ConnectionAssessment:
     severity: str
     reasons: list[str]
     auto_block_eligible: bool
+    trusted_application: bool = False
 
 
 @dataclass
@@ -44,6 +80,7 @@ class NetworkEvent:
     reasons: list[str]
     auto_block_eligible: bool
     action: str = "Наблюдение"
+    trusted_application: bool = False
 
 
 def _is_public_ip(value: str) -> bool:
@@ -54,15 +91,85 @@ def _is_public_ip(value: str) -> bool:
         return False
 
 
+def _filename(value: str) -> str:
+    return PureWindowsPath(value or "").name.lower()
+
+
+def is_trusted_application(
+    process_name: str,
+    process_path: str | None,
+    publisher: str | None,
+    signature_valid: bool,
+) -> bool:
+    filename = _filename(process_name or process_path or "")
+    rule = TRUSTED_APP_RULES.get(filename)
+    if not rule or not signature_valid or not publisher or not process_path:
+        return False
+    normalized_path = process_path.lower().replace("/", "\\")
+    normalized_publisher = publisher.casefold()
+    return (
+        any(token in normalized_path for token in rule["paths"])
+        and any(token in normalized_publisher for token in rule["publishers"])
+    )
+
+
+def get_authenticode_publisher(executable: str | Path) -> tuple[bool, str | None]:
+    """Read the signer of a Windows executable and cache the result by path+mtime."""
+    path = Path(executable)
+    if os.name != "nt" or not path.is_file():
+        return False, None
+    try:
+        modified_ns = path.stat().st_mtime_ns
+    except OSError:
+        return False, None
+    key = str(path.resolve()).casefold()
+    now = time.monotonic()
+    with _signature_cache_lock:
+        cached = _signature_cache.get(key)
+        if cached and cached[0] > now and cached[1] == modified_ns:
+            return cached[2], cached[3]
+
+    environment = os.environ.copy()
+    environment["LEDERG_SIGNED_FILE"] = str(path.resolve())
+    script = (
+        "$signature = Get-AuthenticodeSignature -LiteralPath $env:LEDERG_SIGNED_FILE; "
+        "if ($signature.Status -eq 'Valid' -and $null -ne $signature.SignerCertificate) "
+        "{ $signature.SignerCertificate.Subject }"
+    )
+    try:
+        result = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+            capture_output=True, text=True, timeout=8, check=False, env=environment,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        publisher = result.stdout.strip() if result.returncode == 0 else ""
+        valid = bool(publisher)
+        value = (valid, publisher or None)
+    except (OSError, subprocess.SubprocessError):
+        value = (False, None)
+
+    with _signature_cache_lock:
+        _signature_cache[key] = (now + (600 if value[0] else 90), modified_ns, value[0], value[1])
+    return value
+
+
 def assess_connection(
     process_name: str,
     process_path: str | None,
     remote_address: str,
     remote_port: int,
     status: str,
+    publisher: str | None = None,
+    signature_valid: bool = False,
 ) -> ConnectionAssessment:
     normalized = (process_path or "").lower().replace("/", "\\")
-    filename = Path(process_name or (process_path or "unknown")).name.lower()
+    filename = _filename(process_name or process_path or "unknown")
+    if is_trusted_application(process_name, process_path, publisher, signature_valid):
+        return ConnectionAssessment(
+            0, "trusted", ["Доверенное приложение: действительная подпись и ожидаемый путь установки"],
+            False, True,
+        )
+
     reasons: list[str] = []
     score = 0
     known_name = filename in KNOWN_BAD_NAMES
@@ -84,9 +191,11 @@ def assess_connection(
 
     score = min(score, 100)
     severity = "critical" if score >= 80 else "high" if score >= 60 else "medium" if score >= 35 else "info"
-    # Auto-containment is deliberately restricted to exact, previously observed IOCs.
-    eligible = bool(known_name and known_path and status.upper() == "ESTABLISHED" and _is_public_ip(remote_address))
-    return ConnectionAssessment(score, severity, reasons, eligible)
+    eligible = bool(
+        known_name and known_path and status.upper() == "ESTABLISHED"
+        and _is_public_ip(remote_address)
+    )
+    return ConnectionAssessment(score, severity, reasons, eligible, False)
 
 
 def _windows_root() -> Path:
@@ -119,7 +228,6 @@ def build_firewall_block_args(executable: Path) -> list[str]:
 
 
 def build_firewall_unblock_args(executable: Path) -> list[str]:
-    # Do not require the executable to still exist; the firewall rule may outlive quarantine/removal.
     executable = Path(executable).expanduser().resolve()
     if executable.name.casefold() in PROTECTED_PROCESS_NAMES:
         raise ValueError("Changing rules for WARP/Zapret network components is prohibited")
@@ -163,15 +271,23 @@ def unblock_process_outbound(executable: Path) -> str:
 
 
 class NetworkMonitor:
-    """Polls connection metadata; it does not sniff, decrypt, or store packet contents."""
+    """Poll connection metadata; no packet payload inspection or HTTPS decryption."""
 
-    def __init__(self, callback: Callable[[NetworkEvent], None], interval: float = 2.5):
+    def __init__(
+        self,
+        callback: Callable[[NetworkEvent], None],
+        interval: float = 2.5,
+        quarantine_dir: Path | None = None,
+    ):
         self.callback = callback
         self.interval = max(1.0, interval)
         self.auto_block = False
+        self.auto_quarantine = False
+        self.quarantine_dir = Path(quarantine_dir) if quarantine_dir else None
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._seen: dict[tuple, float] = {}
+        self._auto_contained: set[str] = set()
         self.last_error: str | None = None
 
     @property
@@ -199,6 +315,41 @@ class NetworkMonitor:
                 self.last_error = str(exc)
             self._stop.wait(self.interval)
 
+    def _trusted_signature(self, process_name: str, process_path: str) -> tuple[bool, str | None]:
+        if process_name.casefold() not in TRUSTED_APP_RULES or not process_path:
+            return False, None
+        return get_authenticode_publisher(process_path)
+
+    def _auto_contain(self, event: NetworkEvent) -> str:
+        path = Path(event.process_path)
+        path_key = str(path).casefold()
+        if path_key in self._auto_contained:
+            return "Объект уже обработан автозащитой"
+        if not is_exact_ioc_file(path):
+            return "Автоизоляция запрещена: нет точного совпадения IOC"
+        actions: list[str] = []
+        try:
+            actions.append(block_process_outbound(path))
+        except Exception as exc:
+            actions.append(f"Блокировка сети не выполнена: {exc}")
+        try:
+            process = psutil.Process(event.pid)
+            process.terminate()
+            process.wait(timeout=3)
+            actions.append("Вредоносный процесс остановлен")
+        except (psutil.NoSuchProcess, psutil.ZombieProcess):
+            actions.append("Процесс уже завершился")
+        except Exception as exc:
+            actions.append(f"Остановка процесса не выполнена: {exc}")
+        if self.quarantine_dir is not None:
+            try:
+                item = quarantine_file(path, self.quarantine_dir)
+                actions.append(f"Файл помещён в карантин · SHA256 {item.sha256[:16]}…")
+            except Exception as exc:
+                actions.append(f"Карантин не выполнен: {exc}")
+        self._auto_contained.add(path_key)
+        return " · ".join(actions)
+
     def poll_once(self) -> list[NetworkEvent]:
         now = time.monotonic()
         current: list[NetworkEvent] = []
@@ -208,8 +359,6 @@ class NetworkMonitor:
             is_udp = conn.type == socket.SOCK_DGRAM
             if not conn.pid or not conn.raddr:
                 continue
-            # UDP sockets generally have no TCP-like ESTABLISHED state; connected UDP
-            # endpoints are included when the OS reports a remote address.
             if not is_udp and conn.status != psutil.CONN_ESTABLISHED:
                 continue
             remote_ip = getattr(conn.raddr, "ip", None) or conn.raddr[0]
@@ -230,19 +379,25 @@ class NetworkMonitor:
             if key in self._seen:
                 continue
             self._seen[key] = now
-            assessment = assess_connection(process_name, process_path, str(remote_ip), int(remote_port), conn.status)
+            signature_valid, publisher = self._trusted_signature(process_name, process_path)
+            assessment = assess_connection(
+                process_name, process_path, str(remote_ip), int(remote_port), conn.status,
+                publisher=publisher, signature_valid=signature_valid,
+            )
             protocol = "UDP" if is_udp else "TCP"
             event = NetworkEvent(
                 datetime.now(timezone.utc).astimezone().strftime("%H:%M:%S"),
                 conn.pid, process_name, process_path, str(remote_ip), int(remote_port),
                 protocol, conn.status, assessment.score, assessment.severity,
                 assessment.reasons, assessment.auto_block_eligible,
+                "Доверенное приложение" if assessment.trusted_application else "Наблюдение",
+                assessment.trusted_application,
             )
             if self.auto_block and event.auto_block_eligible:
-                try:
-                    event.action = block_process_outbound(Path(process_path))
-                except Exception as exc:
-                    event.action = f"Автоблокировка не выполнена: {exc}"
+                event.action = (
+                    self._auto_contain(event) if self.auto_quarantine
+                    else block_process_outbound(Path(process_path))
+                )
             current.append(event)
             self.callback(event)
         return current
