@@ -17,7 +17,8 @@ from typing import Callable
 import psutil
 
 from .core import is_exact_ioc_file, quarantine_file
-from .behavior import assess_process_behavior
+from .behavior import assess_process_behavior, is_miner_artifact_name, STEALER_NAMES
+from .telemetry import SysmonReader, assess_sysmon_event
 
 KNOWN_BAD_NAMES = {"svchost32.exe", "cloudsynchost.exe", "csyncwatch.exe"}
 KNOWN_BAD_PATHS = ("\\windowshelper\\", "\\cloudsyncdata\\", "\\cloudsyncwatcher\\")
@@ -323,6 +324,13 @@ class NetworkMonitor:
         self._auto_contained: set[str] = set()
         self._cpu_samples: dict[int, deque[float]] = {}
         self._behavior_seen: dict[tuple[int, str], tuple[float, int]] = {}
+        self.behavior_interval = max(6.0, self.interval * 2)
+        self._last_behavior_scan = 0.0
+        self.sysmon_reader = SysmonReader()
+        self.sysmon_interval = 15.0
+        self._last_sysmon_poll = 0.0
+        self.sysmon_available = False
+        self.sysmon_error: str | None = None
         self.last_error: str | None = None
 
     @property
@@ -345,6 +353,7 @@ class NetworkMonitor:
         while not self._stop.is_set():
             try:
                 self.poll_once()
+                self._poll_sysmon(time.monotonic())
                 self.last_error = None
             except Exception as exc:
                 self.last_error = str(exc)
@@ -424,7 +433,8 @@ class NetworkMonitor:
     def _scan_process_behavior(self, ports_by_pid: dict[int, set[int]], now: float) -> list[NetworkEvent]:
         events: list[NetworkEvent] = []
         live_pids: set[int] = set()
-        for process in psutil.process_iter(["pid", "name", "exe", "cmdline"]):
+        mining_ports = {3333, 3334, 4444, 5555, 7777, 8888, 9999, 14444, 3032}
+        for process in psutil.process_iter(["pid", "name", "exe"]):
             try:
                 info = process.info
                 pid = int(info.get("pid") or process.pid)
@@ -437,11 +447,20 @@ class NetworkMonitor:
                 samples.append(cpu)
                 sustained = len(samples) == 4 and sum(value >= 60.0 for value in samples) >= 3
                 path = str(info.get("exe") or "")
-                command_line = " ".join(info.get("cmdline") or [])
+                ports = ports_by_pid.get(pid, set())
+                known_miner = is_miner_artifact_name(name)
+                known_stealer = name.casefold() in STEALER_NAMES
+                # Avoid reading command lines for every process: inspect only likely candidates.
+                if not (cpu >= 25.0 or sustained or known_miner or known_stealer or bool(ports & mining_ports)):
+                    continue
+                try:
+                    command_line = " ".join(process.cmdline())
+                except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess):
+                    command_line = ""
                 assessment = assess_process_behavior(
                     name, path, command_line,
                     cpu_sustained=sustained,
-                    network_ports=ports_by_pid.get(pid, set()),
+                    network_ports=ports,
                 )
             except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess, OSError, TypeError, ValueError):
                 continue
@@ -484,6 +503,44 @@ class NetworkMonitor:
             key: value for key, value in self._behavior_seen.items()
             if now - value[0] < 600
         }
+        return events
+
+    def _poll_sysmon(self, now: float) -> list[NetworkEvent]:
+        if os.name != "nt" or now - self._last_sysmon_poll < self.sysmon_interval:
+            return []
+        self._last_sysmon_poll = now
+        telemetry = self.sysmon_reader.read_new()
+        self.sysmon_available = self.sysmon_reader.available
+        self.sysmon_error = self.sysmon_reader.last_error
+        events: list[NetworkEvent] = []
+        for record in telemetry:
+            assessment = assess_sysmon_event(record)
+            if assessment.category == "none" or assessment.score < 35:
+                continue
+            data = {key.casefold(): value for key, value in record.data.items()}
+            image = data.get("image") or data.get("sourceimage", "")
+            process_name = PureWindowsPath(image).name or "Sysmon"
+            try:
+                pid = int(data.get("processid") or data.get("sourceprocessid") or 0)
+            except ValueError:
+                pid = 0
+            remote = (
+                data.get("destinationhostname") or data.get("destinationip")
+                or data.get("targetimage") or data.get("targetfilename") or "Windows telemetry"
+            )
+            try:
+                port = int(data.get("destinationport") or 0)
+            except ValueError:
+                port = 0
+            event = NetworkEvent(
+                datetime.now(timezone.utc).astimezone().strftime("%H:%M:%S"),
+                pid, process_name, image, remote, port, f"SYSMON-{record.event_id}",
+                f"Event {record.event_id} · {assessment.category}",
+                assessment.score, assessment.severity, assessment.reasons,
+                False, "Sysmon telemetry: требуется проверка", False,
+            )
+            events.append(event)
+            self.callback(event)
         return events
 
     def poll_once(self) -> list[NetworkEvent]:
@@ -545,5 +602,7 @@ class NetworkMonitor:
                     event.action = f"Автозащита не завершена: {exc}"
             current.append(event)
             self.callback(event)
-        current.extend(self._scan_process_behavior(ports_by_pid, now))
+        if now - self._last_behavior_scan >= self.behavior_interval:
+            self._last_behavior_scan = now
+            current.extend(self._scan_process_behavior(ports_by_pid, now))
         return current
