@@ -93,7 +93,7 @@ def test_analyze_file_flags_known_infostealer_executable_name(tmp_path):
     result = analyze_file(sample)
 
     assert result.score >= 50
-    assert any("infostealer" in reason.lower() for reason in result.reasons)
+    assert any("инфостиллер" in reason.lower() for reason in result.reasons)
 
 
 def test_auto_quarantine_allows_only_high_confidence_user_script(tmp_path):
