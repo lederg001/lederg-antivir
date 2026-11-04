@@ -18,6 +18,7 @@ import psutil
 KNOWN_BAD_NAMES = {"svchost32.exe", "cloudsynchost.exe", "csyncwatch.exe"}
 KNOWN_BAD_PATHS = ("\\windowshelper\\", "\\cloudsyncdata\\", "\\cloudsyncwatcher\\")
 WRITABLE_MARKERS = ("\\appdata\\", "\\temp\\", "\\downloads\\", "\\public\\")
+PROTECTED_PROCESS_NAMES = {"winws.exe", "zapret.exe", "cloudflarewarp.exe", "warp-svc.exe", "warp-cli.exe"}
 
 
 @dataclass
@@ -101,6 +102,8 @@ def build_firewall_block_args(executable: Path) -> list[str]:
     executable = Path(executable).expanduser().resolve(strict=True)
     if not executable.is_file() or executable.suffix.lower() != ".exe":
         raise ValueError("Firewall containment requires an existing .exe file")
+    if executable.name.casefold() in PROTECTED_PROCESS_NAMES:
+        raise ValueError("Blocking WARP/Zapret network components is prohibited")
     try:
         executable.relative_to(_windows_root())
         raise ValueError("Blocking Windows system binaries is prohibited")
@@ -118,6 +121,8 @@ def build_firewall_block_args(executable: Path) -> list[str]:
 def build_firewall_unblock_args(executable: Path) -> list[str]:
     # Do not require the executable to still exist; the firewall rule may outlive quarantine/removal.
     executable = Path(executable).expanduser().resolve()
+    if executable.name.casefold() in PROTECTED_PROCESS_NAMES:
+        raise ValueError("Changing rules for WARP/Zapret network components is prohibited")
     name = _firewall_rule_name(executable)
     return ["advfirewall", "firewall", "delete", "rule", f'name="{name}"']
 
