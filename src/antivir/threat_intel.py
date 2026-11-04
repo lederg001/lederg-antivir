@@ -62,6 +62,21 @@ PROTECTION_GUIDANCE = [
     {"title": "Updates and multi-factor authentication", "detail": "Keep browsers and password managers updated; use phishing-resistant MFA where available and review stored passwords and active sessions after a suspected infection.", "source": "https://attack.mitre.org/techniques/T1555/"},
 ]
 
+
+COMMON_SERVICE_DOMAINS = [
+    {"service": "Opera", "domains": ["opera.com"]},
+    {"service": "Discord", "domains": ["discord.com", "discord.gg", "discordapp.com", "discordapp.net", "discord.media"]},
+    {"service": "Google / Chrome", "domains": ["google.com", "googleapis.com", "gstatic.com"]},
+    {"service": "Microsoft / Windows / Office", "domains": ["microsoft.com", "microsoftonline.com", "office.com", "live.com", "windows.net"]},
+    {"service": "Mozilla / Firefox", "domains": ["mozilla.org", "firefox.com"]},
+    {"service": "Brave", "domains": ["brave.com"]},
+    {"service": "Telegram", "domains": ["telegram.org", "t.me", "telegram.me", "telegram-cdn.org"]},
+    {"service": "Steam", "domains": ["steampowered.com", "steamcommunity.com", "steamstatic.com"]},
+    {"service": "Spotify", "domains": ["spotify.com", "scdn.co"]},
+    {"service": "Slack", "domains": ["slack.com", "slack-edge.com"]},
+    {"service": "Zoom", "domains": ["zoom.us"]},
+]
+
 THREAT_FEEDS = [
     {"name": "MalwareBazaar", "type": "Known malware file hashes and metadata", "url": "https://bazaar.abuse.ch/api/", "auth": "Community API key required"},
     {"name": "ThreatFox", "type": "Malware-related indicators of compromise", "url": "https://threatfox.abuse.ch/api/", "auth": "Community API key required"},
