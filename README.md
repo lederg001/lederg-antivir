@@ -51,7 +51,7 @@ The common-domain catalogue is informational rather than a global allowlist. The
 
 Auto-protection defaults to **OFF**. When explicitly enabled, its preference persists and LEDERG can restore it after the next Windows sign-in when per-user autostart is active.
 
-Known exact stealer IOC files can be stopped, blocked and SHA-256-verified into quarantine. Cryptominer detection uses a separate correlation engine:
+Exact known stealer IOC files and locally refreshed SHA-256 matches can be stopped, blocked and SHA-256-verified into quarantine. High-confidence scripts in user-writable locations can also be quarantined when auto-protection is enabled. Cryptominer detection uses a separate correlation engine:
 - known miner executable names and renamed miner command-line patterns;
 - Stratum protocol, algorithm/wallet/pool arguments and known public pool hints;
 - sustained high per-process CPU in multiple monitor samples;
@@ -69,7 +69,7 @@ LEDERG provides local containment, evidence review and process-specific outbound
 
 The curated reference catalogue currently contains 40 family/panel entries, including Vidar, LummaC2, Rhadamanthys, StealC, RedLine, Raccoon, MetaStealer, RisePro, Meduza, SalatStealer, Amatera, Fickle, GhostSpy, XLoader/Formbook, Agent Tesla, StrelaStealer, Remus, ACR Stealer, Odyssey, ArechClient2, CallbackBeaver, Tenzor, Cuttlefish, Beavertail, DanaBot, Ailurophile, PoisonX, Katz, Sys01, Snake Keylogger, WorldWind, Atomic Stealer, Poseidon and MacSync. Sources include Microsoft, Recorded Future, Red Canary, Flare and CIS/MS-ISAC 2025–2026 reporting. The catalogue also lists common mining tools such as XMRig, CPUMiner, T-Rex, PhoenixMiner, NBMiner, lolMiner, GMiner, SRBMiner, TeamRedMiner and NanoMiner. Many mining tools are legitimate software, not malware by themselves.
 
-The app tracks ATT&CK T1539 (Steal Web Session Cookie), T1550.004 (Web Session Cookie), T1555.003 (Credentials from Web Browsers), T1185 (Browser Session Hijacking), T1496 and T1496.001 (Resource/Compute Hijacking). Contextual family entries are not individual malware signatures. References are included for MalwareBazaar, ThreatFox and URLhaus; live IOC ingestion from these feeds is not yet implemented.
+The app tracks ATT&CK T1539 (Steal Web Session Cookie), T1550.004 (Web Session Cookie), T1555.003 (Credentials from Web Browsers), T1185 (Browser Session Hijacking), T1496 and T1496.001 (Resource/Compute Hijacking). Contextual family entries are not individual malware signatures. The threat page includes an **ОБНОВИТЬ IOC** action that uses a free abuse.ch Auth-Key to fetch recent MalwareBazaar SHA-256 detections and recent ThreatFox hashes/domains. The key is used only in memory for the request and is not written to settings. IOC metadata is saved locally, stale indicators older than six months are pruned, and local files are checked by exact SHA-256. Malware samples are never downloaded.
 
 **MFA / 2FA clarification:** a stolen session cookie or access token may let an attacker reuse a session that was already authenticated, bypassing some MFA prompts. It does not reveal the one-time code or the authenticator's second-factor secret. After a suspected compromise, use a clean device to revoke active sessions/tokens, sign out all devices, change passwords and check account recovery methods.
 
@@ -82,6 +82,7 @@ The connection metadata monitor polls established TCP connections and connected 
 When Sysmon is already installed and its Operational channel is readable, LEDERG can additionally ingest recent Event IDs 1 (process creation), 3 (network connection), 10 (process access), 11 (file creation), 13 (registry value set) and 22 (DNS query). The reader is read-only: it does not install Sysmon, alter its configuration or change Windows audit policy. It highlights suspicious access to LSASS/browser processes, autorun registry changes, suspicious command lines, and DNS/network indicators associated with mining pools. These events are review signals and do not independently trigger process termination.
 
 Sysmon reference and setup documentation: [Microsoft Sysmon overview](https://learn.microsoft.com/en-us/windows/security/operating-system-security/sysmon/overview).
+MalwareBazaar and ThreatFox community API documentation: [MalwareBazaar API](https://bazaar.abuse.ch/api/) · [ThreatFox API](https://threatfox.abuse.ch/api/).
 
 **Traffic visibility limit:** this is not a packet sniffer or full WFP/NDIS sensor. LEDERG sees socket metadata and configured Windows event telemetry; it does not inspect encrypted HTTPS payloads, read cookies/passwords, or prove that data was exfiltrated. Full packet capture would require a separate low-level driver/sensor and can conflict with VPN, WARP, Zapret or other network filters.
 
@@ -115,7 +116,8 @@ GitHub Actions runs tests and packages the Windows x64 EXE on every push to `mai
 - Full interface refresh with animated rounded pill buttons and persistent page views; tab switches no longer destroy and recreate every control.
 - Search field for the threat catalogue.
 - Optional read-only Sysmon ingestion for process creation, network connections, process access, startup-file creation, registry autoruns and DNS queries.
-- Reduced monitoring overhead: network polling is separated from process behavior sampling, and command lines are read only for candidate processes.
+- Reduced monitoring overhead: network polling is separated from process behavior sampling, command lines are read only for candidate processes, and background UI events are flushed in bounded batches.
+- Authenticated on-demand MalwareBazaar / ThreatFox IOC refresh, exact local SHA-256 matching and Sysmon DNS-domain correlation. API keys are never persisted.
 - Expanded the curated threat catalogue to 40 family/panel entries, including 2025–2026 reporting on Cuttlefish, Beavertail, DanaBot, Ailurophile, PoisonX, Katz, Sys01 and WorldWind.
 - High-confidence (90+) suspicious scripts in user-writable folders can be quarantined when auto-protection is explicitly enabled; known stealer filenames are flagged for review.
 - Safe defensive response only: no traffic flooding, false-data exfiltration, or interference with third-party infrastructure.
