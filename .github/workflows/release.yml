@@ -20,7 +20,7 @@ jobs:
       - name: Run tests
         run: python -m pytest -q
       - name: Build Windows x64 executable
-        run: pyinstaller --noconfirm --clean --onefile --windowed --uac-admin --paths src --name LEDERG-ANTIVIR app.py
+        run: pyinstaller --noconfirm --clean --onefile --windowed --paths src --collect-all pystray --collect-all PIL --name LEDERG-ANTIVIR app.py
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
