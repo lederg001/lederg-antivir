@@ -26,3 +26,12 @@ jobs:
         with:
           name: LEDERG-ANTIVIR-Windows-x64
           path: dist/LEDERG-ANTIVIR.exe
+      - name: Publish Release v0.3.0
+        if: github.ref == 'refs/heads/main' && github.event.head_commit.message == 'release: publish LEDERG ANTIVIR v0.3.0'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.3.0
+          target_commitish: main
+          name: LEDERG ANTIVIR v0.3.0
+          files: dist/LEDERG-ANTIVIR.exe
+          generate_release_notes: true
