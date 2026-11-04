@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .behavior import STEALER_NAMES, assess_stealer_script, is_miner_artifact_name
+from .ioc_feeds import lookup_hash
 
 @dataclass
 class ScanResult:
@@ -17,6 +18,7 @@ class ScanResult:
     score: int
     reasons: list[str]
     quarantined_path: Path | None = None
+    ioc_match: bool = False
 
 @dataclass
 class QuarantineItem:
@@ -76,7 +78,15 @@ def analyze_file(path: Path) -> ScanResult:
         except OSError:
             pass
 
-    return ScanResult(path, _sha256(path), min(score, 100), reasons)
+    digest = _sha256(path)
+    ioc = lookup_hash(digest)
+    ioc_match = bool(ioc)
+    if ioc_match:
+        family = str(ioc.get("family") or "Unknown")
+        source = str(ioc.get("source") or "Threat intelligence")
+        reasons.append(f"SHA-256 совпадает с IOC {source}: {family}")
+        score = 100
+    return ScanResult(path, digest, min(score, 100), reasons, ioc_match=ioc_match)
 
 
 def should_auto_quarantine(result: ScanResult) -> bool:
@@ -84,6 +94,8 @@ def should_auto_quarantine(result: ScanResult) -> bool:
     path = Path(result.path).expanduser().resolve()
     if is_exact_ioc_file(path):
         return True
+    if result.ioc_match:
+        return not _is_protected(path)
     if result.score < 90 or path.suffix.casefold() not in {".ps1", ".bat", ".cmd", ".vbs", ".js"}:
         return False
     normalized = str(path).casefold().replace("/", "\\")
