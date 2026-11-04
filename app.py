@@ -280,6 +280,8 @@ class App(tk.Tk):
 
     def _hide_to_tray(self):
         if self.tray_icon is None:
+            # If tray initialization failed, restore the native frame before minimizing.
+            self.overrideredirect(False)
             self.iconify()
             return
         self.withdraw()
