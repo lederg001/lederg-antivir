@@ -14,6 +14,7 @@ class ScanResult:
     sha256: str
     score: int
     reasons: list[str]
+    quarantined_path: Path | None = None
 
 @dataclass
 class QuarantineItem:
