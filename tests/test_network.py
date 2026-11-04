@@ -161,3 +161,11 @@ def test_common_domain_reference_catalogue_contains_major_user_services():
 
     domains = {domain for service in COMMON_SERVICE_DOMAINS for domain in service["domains"]}
     assert {"opera.com", "discord.com", "discord.gg", "google.com", "microsoft.com"} <= domains
+
+
+def test_threat_catalogue_includes_recently_reported_infostealer_families():
+    names = {family["name"] for family in TRACKED_FAMILIES}
+    assert {
+        "Cuttlefish", "Beavertail", "DanaBot", "Ailurophile",
+        "PoisonX Stealer", "Katz Stealer", "Sys01", "Snake Keylogger",
+    } <= names
