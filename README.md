@@ -4,6 +4,8 @@
 
 [Download LEDERG ANTIVIR v0.3.0](https://github.com/lederg001/lederg-antivir/releases/tag/v0.3.0) — latest Windows x64 build.
 
+v0.3.0 adds the refreshed dashboard, stricter signed-app trust checks, exact-IOC auto-containment, and expanded stealer/ATT&CK references.
+
 > LEDERG ANTIVIR is a defensive companion to Microsoft Defender, not a certified antivirus or a replacement for endpoint protection. Heuristic detections are not proof of malware.
 
 ## What users see
