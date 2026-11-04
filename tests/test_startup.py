@@ -117,3 +117,29 @@ def test_own_lederg_autostart_entry_is_protected_from_self_detection():
     assert result.severity == "trusted"
     assert result.auto_quarantine_eligible is False
     assert any("собственное приложение" in reason.lower() for reason in result.reasons)
+
+
+
+def test_self_autostart_requires_our_exact_name_and_executable(monkeypatch, tmp_path):
+    from src.antivir import startup
+
+    executable = tmp_path / "LEDERG-ANTIVIR.exe"
+    executable.write_bytes(b"test")
+    monkeypatch.setattr(startup.sys, "executable", str(executable))
+    monkeypatch.setattr(startup.sys, "frozen", True, raising=False)
+
+    assert startup._is_our_autostart_entry(
+        "LEDERG ANTIVIR",
+        f'"{executable}" --background',
+        str(executable),
+    )
+    assert not startup._is_our_autostart_entry(
+        "Other updater",
+        f'"{executable}" --background',
+        str(executable),
+    )
+    assert not startup._is_our_autostart_entry(
+        "LEDERG ANTIVIR",
+        r'"C:\\Temp\\fake.exe" --background',
+        r"C:\\Temp\\fake.exe",
+    )
