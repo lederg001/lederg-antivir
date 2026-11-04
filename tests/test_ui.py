@@ -27,3 +27,13 @@ def test_rounded_rectangle_radius_is_clamped_for_small_controls():
     assert max(points[0::2]) == 30
     assert min(points[1::2]) == 0
     assert max(points[1::2]) == 20
+
+
+def test_pop_event_batch_limits_ui_work_and_preserves_remaining_events():
+    from src.antivir.ui import pop_event_batch
+
+    pending = list(range(7))
+    first = pop_event_batch(pending, limit=3)
+
+    assert first == [0, 1, 2]
+    assert pending == [3, 4, 5, 6]
