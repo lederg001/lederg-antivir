@@ -12,8 +12,15 @@ MINER_NAMES = {
 }
 STEALER_NAMES = {
     "redline.exe", "vidar.exe", "rhadamanthys.exe", "stealc.exe", "lumma.exe",
-    "agenttesla.exe", "raccoon.exe", "formbook.exe", "xloader.exe",
-    "strelastealer.exe", "risepro.exe", "meduzastealer.exe",
+    "lummac2.exe", "agenttesla.exe", "raccoon.exe", "raccoonstealer.exe",
+    "formbook.exe", "xloader.exe", "strelastealer.exe", "risepro.exe",
+    "meduzastealer.exe", "metastealer.exe", "meta.exe", "acreed.exe",
+    "amatera.exe", "odyssey.exe", "odysseystealer.exe", "arechclient2.exe",
+    "callbackbeaver.exe", "tenzor.exe", "cuttlefish.exe", "beavertail.exe",
+    "danabot.exe", "ailurophile.exe", "poisonx.exe", "poisonxstealer.exe",
+    "katzstealer.exe", "katz.exe", "sys01.exe", "snakekeylogger.exe",
+    "salatstealer.exe", "svcstealer.exe", "cyberstealer.exe",
+    "ficklestealer.exe", "ghostspy.exe", "worldwind.exe", "atomicstealer.exe",
 }
 
 MINER_ARGUMENTS = (
@@ -32,20 +39,32 @@ BROWSER_STORE_MARKERS = (
     "login data", "cookies", "local state", "web data", "logins.json",
     "key4.db", "chrome\\user data", "opera software", "firefox\\profiles",
     "discord\\local storage", "telegram desktop\\tdata", "leveldb",
-    "wallet", "extension state",
+    "google\\chrome\\user data", "microsoft\\edge\\user data",
+    "mozilla\\firefox\\profiles", "bravesoftware\\brave-browser\\user data",
+    "opera software\\opera stable", "vivaldi\\user data",
+    "metamask", "exodus", "electrum", "atomic wallet", "coinbase wallet",
+    "keepass", "bitwarden", "1password", "wallet", "extension state",
 )
 DECRYPTION_MARKERS = (
     "cryptunprotectdata", "protecteddata.unprotect", "dpapi", "oscrypt",
-    "decrypt", "aesgcm", "master_key", "unprotect",
+    "decrypt", "aesgcm", "master_key", "unprotect", "ncryptunprotectsecret",
+    "appbound", "v20", "os_crypt", "pbkdf2", "key4.db",
 )
 COLLECTION_MARKERS = (
-    "sqlite3", "sqlite.connect", "shutil.copy", "copyfile", "zipfile",
-    "tarfile", "7z", "leveldb",
+    "sqlite3", "sqlite.connect", "shutil.copy", "shutil.copy2", "copyfile",
+    "zipfile", "tarfile", "7z", "leveldb", "os.walk", "path.rglob",
 )
 EXFILTRATION_MARKERS = (
     "requests.post", "httpx.post", "invoke-restmethod", "webclient.upload",
     "uploadfile", "discord.com/api/webhooks", "socket.create_connection",
     "urlopen", "telegram.org", "api.telegram.org", "curl",
+    "aiohttp", "multipart/form-data", "discord.com/api/webhooks",
+)
+CLICKFIX_MARKERS = (
+    "mshta.exe", "rundll32.exe javascript:", "regsvr32.exe /s",
+    "bitsadmin /transfer", "downloadstring(", "invoke-webrequest",
+    "webclient.downloadstring", "davwwwroot", "frombase64string",
+    "powershell -enc", "powershell.exe -w hidden",
 )
 
 
@@ -75,6 +94,7 @@ def assess_stealer_script(content: str) -> BehaviorAssessment:
     decryption = [marker for marker in DECRYPTION_MARKERS if marker in sample]
     collection = [marker for marker in COLLECTION_MARKERS if marker in sample]
     exfiltration = [marker for marker in EXFILTRATION_MARKERS if marker in sample]
+    delivery = [marker for marker in CLICKFIX_MARKERS if marker in sample]
 
     score = 0
     reasons: list[str] = []
@@ -90,6 +110,9 @@ def assess_stealer_script(content: str) -> BehaviorAssessment:
     if exfiltration:
         score += 30
         reasons.append("Обнаружены признаки отправки данных во внешнюю сеть")
+    if delivery:
+        score += 15
+        reasons.append("Обнаружены признаки ClickFix/LOLBin или скрытого запуска скрипта")
 
     score = min(score, 100)
     if not browser or score < 35:
