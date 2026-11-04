@@ -10,7 +10,7 @@
 - Live polling of established external TCP/UDP connections, attributed to process name, PID and executable path when Windows grants access.
 - Transparent risk scoring for previously observed suspicious paths/names and executables connecting from user-writable locations.
 - Optional automatic containment, disabled by default, restricted to exact prior IOCs + an established public-IP connection.
-- Manual process-specific outbound block/unblock using Windows Firewall; never disables WARP, Zapret, WinDivert or Windows Firewall services.
+- Manual process-specific outbound block/unblock using Windows Firewall; never disables WARP, Zapret, WinDivert or Windows Firewall services, and refuses to create/remove firewall rules for the WARP/Zapret executable names.
 - File/folder scans for EXE/DLL/SCR/BAT/CMD/PS1, SHA-256 and visible reasons.
 - Quarantine moves files to a non-executable extension, records original path and SHA-256, verifies integrity and supports restore.
 - Tracked families from public reporting: Vidar, LummaC2, Rhadamanthys, StealC, RedLine, Raccoon Stealer, MetaStealer, Acreed, Warden Stealer and Remus.
