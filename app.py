@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 import threading
@@ -22,6 +23,10 @@ from antivir.protection import ProtectionCheck, get_security_posture
 from antivir.threat_intel import (
     ATTACK_TECHNIQUES, COMMON_BEHAVIORS, PROTECTION_GUIDANCE,
     COMMON_SERVICE_DOMAINS, SOURCES, THREAT_FEEDS, TRACKED_FAMILIES,
+)
+from antivir.startup import (
+    StartupEntry, build_autostart_command, is_run_at_logon_enabled,
+    scan_startup_entries, set_run_at_logon,
 )
 
 APP = "LEDERG ANTIVIR"
@@ -51,28 +56,237 @@ class App(tk.Tk):
         self.geometry("1360x860")
         self.minsize(1080, 720)
         self.configure(bg=BG)
+        self.overrideredirect(True)
+        self._maximized = False
+        self._normal_geometry = "1360x860"
+        self._drag_origin: tuple[int, int] | None = None
+        self._launch_background = "--background" in sys.argv
+        self.tray_icon = None
 
+        self.settings = self._load_settings()
         self.network_events: list[NetworkEvent] = []
         self.scan_results: list[ScanResult] = []
+        self.startup_entries: list[StartupEntry] = []
         self.network_count = 0
-        self.auto_protect_enabled = False
+        self.auto_protect_enabled = bool(self.settings.get("auto_protect", False))
+        self.autostart_enabled = self._read_autostart_state()
         self.net_rows: dict[str, NetworkEvent] = {}
         self.scan_rows: dict[str, ScanResult] = {}
+        self.startup_rows: dict[str, StartupEntry] = {}
         self.q_records: dict[str, tuple[Path, Path, Path, bool]] = {}
         self.nav_buttons: dict[str, tk.Button] = {}
         self.stat_values: list[tk.Label] = []
         self.monitor = NetworkMonitor(self._on_network_event, interval=2.5, quarantine_dir=QUARANTINE)
-        self.monitor.auto_block = False
-        self.monitor.auto_quarantine = False
+        self.monitor.auto_block = self.auto_protect_enabled
+        self.monitor.auto_quarantine = self.auto_protect_enabled
 
         self._build_styles()
+        self._build_titlebar()
         self._build_shell()
         self.show_page("home")
+        self._sync_auto_button()
+        self._sync_autostart_button()
         self.protocol("WM_DELETE_WINDOW", self._close)
+        self.bind("<Escape>", lambda _event: self._hide_to_tray())
         self.monitor.start()
+        self.after(500, self._start_tray)
         self.after(800, self._refresh_status)
         self.after(1400, self._refresh_defender_status_async)
         self.after(1800, self._refresh_quarantine_count)
+        if self._launch_background:
+            self.after(1100, self._hide_to_tray)
+        if self.auto_protect_enabled and not is_admin():
+            self.status.set("Автозащита восстановлена после входа в Windows. Для сетевой блокировки запусти LEDERG от администратора.")
+
+    def _load_settings(self) -> dict:
+        try:
+            path = BASE / "settings.json"
+            return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+        except (OSError, ValueError, TypeError):
+            return {}
+
+    def _save_settings(self):
+        try:
+            BASE.mkdir(parents=True, exist_ok=True)
+            path = BASE / "settings.json"
+            temporary = path.with_suffix(".tmp")
+            temporary.write_text(
+                json.dumps({"auto_protect": self.auto_protect_enabled}, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            temporary.replace(path)
+        except OSError as exc:
+            self.status.set(f"Не удалось сохранить настройки автозащиты: {exc}")
+
+    def _read_autostart_state(self) -> bool:
+        try:
+            return is_run_at_logon_enabled()
+        except OSError:
+            return False
+
+    def _autostart_command(self) -> str:
+        if getattr(sys, "frozen", False):
+            return build_autostart_command(frozen=True, executable=sys.executable)
+        python_executable = Path(sys.executable)
+        pythonw = python_executable.with_name("pythonw.exe")
+        launcher = str(pythonw if pythonw.is_file() else python_executable)
+        script = str(Path(sys.argv[0]).resolve())
+        return build_autostart_command(frozen=False, executable=launcher, script=script)
+
+    def _build_titlebar(self):
+        bar = tk.Frame(self, bg="#05070b", height=42, highlightthickness=1, highlightbackground="#1c2532")
+        bar.pack(fill="x", side="top")
+        bar.pack_propagate(False)
+        self.titlebar = bar
+
+        brand = tk.Frame(bar, bg="#05070b")
+        brand.pack(side="left", fill="y", padx=(13, 0))
+        emblem = tk.Canvas(brand, width=25, height=25, bg="#05070b", highlightthickness=0)
+        emblem.pack(side="left", padx=(0, 8), pady=8)
+        emblem.create_polygon(12, 1, 23, 6, 21, 17, 12, 24, 3, 17, 1, 6,
+                              fill="#24101a", outline=RED, width=1)
+        emblem.create_line(7, 12, 11, 16, 18, 8, fill=RED_HOVER, width=2)
+        title = tk.Label(brand, text="LEDERG  /  ANTIVIR", bg="#05070b", fg=TEXT,
+                         font=("Segoe UI Semibold", 9))
+        title.pack(side="left")
+        subtitle = tk.Label(brand, text="  ENDPOINT DEFENSE", bg="#05070b", fg="#657184",
+                            font=("Segoe UI", 8))
+        subtitle.pack(side="left")
+
+        controls = tk.Frame(bar, bg="#05070b")
+        controls.pack(side="right", fill="y")
+        self._title_button(controls, "—", self._hide_to_tray, "#05070b", "#202b3a").pack(side="left", fill="y")
+        self._title_button(controls, "□", self._toggle_maximize, "#05070b", "#202b3a").pack(side="left", fill="y")
+        self._title_button(controls, "×", self._hide_to_tray, "#05070b", RED_DARK, RED_HOVER).pack(side="left", fill="y")
+
+        for widget in (bar, brand, emblem, title, subtitle):
+            widget.bind("<ButtonPress-1>", self._start_window_drag)
+            widget.bind("<B1-Motion>", self._drag_window)
+            widget.bind("<Double-Button-1>", lambda _event: self._toggle_maximize())
+
+    def _title_button(self, parent, label, command, background, active, hover=None):
+        return tk.Button(
+            parent, text=label, command=command, bg=background, fg=TEXT,
+            activebackground=hover or active, activeforeground="white",
+            relief="flat", bd=0, width=5, cursor="hand2",
+            font=("Segoe UI", 11 if label != "×" else 13),
+        )
+
+    def _start_window_drag(self, event):
+        if self._maximized:
+            return
+        self._drag_origin = (event.x_root - self.winfo_x(), event.y_root - self.winfo_y())
+
+    def _drag_window(self, event):
+        if self._drag_origin and not self._maximized:
+            x = event.x_root - self._drag_origin[0]
+            y = event.y_root - self._drag_origin[1]
+            self.geometry(f"+{x}+{y}")
+
+    def _toggle_maximize(self):
+        if self._maximized:
+            self.geometry(self._normal_geometry)
+            self._maximized = False
+            return
+        self._normal_geometry = self.geometry()
+        left = top = 0
+        width, height = self.winfo_screenwidth(), self.winfo_screenheight()
+        if os.name == "nt":
+            try:
+                import ctypes
+
+                class RECT(ctypes.Structure):
+                    _fields_ = [
+                        ("left", ctypes.c_long), ("top", ctypes.c_long),
+                        ("right", ctypes.c_long), ("bottom", ctypes.c_long),
+                    ]
+
+                rect = RECT()
+                if ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rect), 0):
+                    left, top = rect.left, rect.top
+                    width, height = rect.right - rect.left, rect.bottom - rect.top
+            except Exception:
+                pass
+        self.geometry(f"{width}x{height}+{left}+{top}")
+        self._maximized = True
+
+    def _start_tray(self):
+        if self.tray_icon is not None:
+            return
+        try:
+            import pystray
+            from PIL import Image, ImageDraw
+
+            image = Image.new("RGBA", (64, 64), (7, 9, 14, 255))
+            draw = ImageDraw.Draw(image)
+            draw.polygon([(32, 3), (56, 13), (53, 40), (32, 60), (11, 40), (8, 13)],
+                         fill=(36, 14, 25, 255), outline=(237, 35, 62, 255), width=3)
+            draw.line([(19, 31), (28, 40), (46, 21)], fill=(255, 61, 85, 255), width=5)
+            menu = pystray.Menu(
+                pystray.MenuItem("Показать LEDERG", self._tray_show, default=True),
+                pystray.MenuItem("Быстрая проверка", self._tray_quick_scan),
+                pystray.MenuItem("Проверить автозагрузку", self._tray_scan_startup),
+                pystray.Menu.SEPARATOR,
+                pystray.MenuItem(
+                    lambda _item: "Выключить автозащиту" if self.auto_protect_enabled else "Включить автозащиту",
+                    self._tray_toggle_protection,
+                ),
+                pystray.Menu.SEPARATOR,
+                pystray.MenuItem("Полностью выйти", self._tray_exit),
+            )
+            self.tray_icon = pystray.Icon("lederg-antivir", image, "LEDERG ANTIVIR", menu)
+            threading.Thread(target=self.tray_icon.run, name="LEDERG-SystemTray", daemon=True).start()
+        except Exception as exc:
+            self.tray_icon = None
+            self.status.set(f"Системный трей недоступен: {exc}. Окно останется обычным.")
+
+    def _tray_show(self, _icon=None, _item=None):
+        try:
+            self.after(0, self._show_window)
+        except RuntimeError:
+            pass
+
+    def _tray_quick_scan(self, _icon=None, _item=None):
+        try:
+            self.after(0, lambda: (self._show_window(), self.show_page("home"), self.quick_scan()))
+        except RuntimeError:
+            pass
+
+    def _tray_scan_startup(self, _icon=None, _item=None):
+        try:
+            self.after(0, lambda: (self._show_window(), self.show_page("startup"), self.scan_startup()))
+        except RuntimeError:
+            pass
+
+    def _tray_toggle_protection(self, _icon=None, _item=None):
+        try:
+            self.after(0, self._toggle_auto_protection)
+        except RuntimeError:
+            pass
+
+    def _tray_exit(self, _icon=None, _item=None):
+        try:
+            self.after(0, self._shutdown)
+        except RuntimeError:
+            pass
+
+    def _show_window(self):
+        self.deiconify()
+        self.lift()
+        try:
+            self.focus_force()
+        except tk.TclError:
+            pass
+
+    def _hide_to_tray(self):
+        if self.tray_icon is None:
+            self.iconify()
+            return
+        self.withdraw()
+        try:
+            self.tray_icon.notify("LEDERG ANTIVIR продолжает защищать систему", "Окно скрыто в системный трей")
+        except Exception:
+            pass
 
     def _build_styles(self):
         style = ttk.Style(self)
