@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from src.antivir.network import assess_connection, build_firewall_block_args
+from src.antivir.network import assess_connection, build_firewall_block_args, build_firewall_unblock_args
 from src.antivir.threat_intel import TRACKED_FAMILIES
 
 
@@ -61,3 +61,27 @@ def test_family_catalog_is_transparent_and_referenced():
         {family["name"] for family in TRACKED_FAMILIES}
     )
     assert all(family["source"] for family in TRACKED_FAMILIES)
+
+
+
+def test_firewall_refuses_to_change_warp_or_zapret_process_rules(tmp_path):
+    protected = tmp_path / "winws.exe"
+    protected.write_bytes(b"test")
+    try:
+        build_firewall_block_args(protected)
+    except ValueError as exc:
+        assert "WARP/Zapret" in str(exc)
+    else:
+        raise AssertionError("WARP/Zapret process block must be refused")
+
+
+def test_firewall_rule_can_be_removed_after_executable_is_gone(tmp_path):
+    executable = tmp_path / "former-app.exe"
+    executable.write_bytes(b"test")
+    blocked_args = build_firewall_block_args(executable)
+    executable.unlink()
+    remove_args = build_firewall_unblock_args(executable)
+
+    assert any("Outbound" in item for item in blocked_args)
+    assert "delete" in remove_args
+    assert "name=" in remove_args[-1]
