@@ -6,7 +6,7 @@ import re
 import threading
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
@@ -40,6 +40,20 @@ def normalize_domain(value: str) -> str:
     if any(not re.fullmatch(r"[a-z0-9-]+", part) for part in raw.split(".")):
         return ""
     return raw
+
+
+def _is_recent(record: dict, *, now: datetime | None = None) -> bool:
+    value = str(record.get("first_seen") or "").strip()
+    if not value:
+        return True
+    try:
+        seen = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if seen.tzinfo is None:
+        seen = seen.replace(tzinfo=timezone.utc)
+    current = now or datetime.now(timezone.utc)
+    return current - timedelta(days=180) <= seen <= current + timedelta(days=1)
 
 
 def merge_feed_payloads(
@@ -89,6 +103,14 @@ def merge_feed_payloads(
                 result["domains"][domain] = record
 
     # Bound disk usage; the feeds are refreshed regularly and newest entries win.
+    result["hashes"] = {
+        key: value for key, value in result["hashes"].items()
+        if isinstance(value, dict) and _is_recent(value)
+    }
+    result["domains"] = {
+        key: value for key, value in result["domains"].items()
+        if isinstance(value, dict) and _is_recent(value)
+    }
     result["hashes"] = dict(list(result["hashes"].items())[-50000:])
     result["domains"] = dict(list(result["domains"].items())[-20000:])
     return result
@@ -160,7 +182,7 @@ def update_threat_feeds(auth_key: str, store_path: Path | None = None) -> dict:
         key,
         "application/x-www-form-urlencoded",
     )
-    if malwarebazaar.get("query_status") not in {"ok", "no_results"}:
+    if malwarebazaar.get("query_status") not in {"ok", "no_result", "no_results"}:
         raise ValueError(f"MalwareBazaar: {malwarebazaar.get('query_status', 'unknown error')}")
     threatfox = _post_json(
         "https://threatfox-api.abuse.ch/api/v1/",
