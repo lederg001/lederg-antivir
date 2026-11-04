@@ -363,6 +363,7 @@ class App(tk.Tk):
             ("protection", "⬟", "Центр защиты"),
             ("threats", "⌘", "База угроз"),
             ("trusted", "✓", "Доверенные приложения"),
+            ("startup", "▤", "Автозагрузка"),
         ]
         for key, icon, title in nav_items:
             button = tk.Button(
@@ -435,6 +436,7 @@ class App(tk.Tk):
             "protection": ("ЦЕНТР ЗАЩИТЫ", "Состояние встроенных механизмов безопасности Windows"),
             "threats": ("БАЗА УГРОЗ", "Семейства стиллеров, техники атак и источники данных"),
             "trusted": ("ДОВЕРЕННЫЕ ПРИЛОЖЕНИЯ", "Проверка издателя и пути вместо слепого доверия имени или домену"),
+            "startup": ("АВТОЗАГРУЗКА", "Run / RunOnce, папки Startup, подписи и подозрительные параметры запуска"),
         }
         title, subtitle = headings[page]
         self.page_title.configure(text=title)
@@ -446,6 +448,7 @@ class App(tk.Tk):
             "protection": self._build_protection_page,
             "threats": self._build_threat_page,
             "trusted": self._build_trusted_page,
+            "startup": self._build_startup_page,
         }
         builders[page]()
         if page == "protection":
@@ -474,6 +477,8 @@ class App(tk.Tk):
         self.scan_button.pack(side="left", padx=(0, 10))
         self.auto_button = self._button(actions, "АВТОЗАЩИТА: ВЫКЛ", self._toggle_auto_protection)
         self.auto_button.pack(side="left")
+        self.startup_button = self._button(actions, "ЗАПУСК С WINDOWS: ВЫКЛ", self._toggle_autostart, compact=True)
+        self.startup_button.pack(side="left", padx=(10, 0))
         self.scan_progress = ttk.Progressbar(left, mode="indeterminate", length=450)
         self.scan_progress.pack(anchor="w", fill="x", pady=(15, 0))
         self.scan_progress.stop()
@@ -544,6 +549,7 @@ class App(tk.Tk):
         self._button(quick, "Полная проверка Microsoft Defender", self.full_defender_scan).pack(fill="x", padx=14, pady=5)
         self._button(quick, "Проверить выбранную папку", self.scan_folder).pack(fill="x", padx=14, pady=5)
         self._button(quick, "Открыть сетевой монитор", lambda: self.show_page("network")).pack(fill="x", padx=14, pady=5)
+        self._button(quick, "Проверить автозагрузку", lambda: (self.show_page("startup"), self.scan_startup())).pack(fill="x", padx=14, pady=5)
         self._button(quick, "Открыть карантин", lambda: self.show_page("quarantine")).pack(fill="x", padx=14, pady=5)
         tk.Label(quick, text="Защита не удаляет файлы по одному\nслабому признаку. Автоизоляция\nсрабатывает только на точные IOC.",
                  bg=PANEL, fg=MUTED, justify="left", font=("Segoe UI", 9)).pack(anchor="w", padx=16, pady=(15, 10))
