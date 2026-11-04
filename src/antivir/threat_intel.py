@@ -41,6 +41,11 @@ COMMON_BEHAVIORS = [
     "Exfiltration through web services or cloud storage (ATT&CK T1567)",
     "Process injection, hollowing or suspicious access to browser processes",
     "ClickFix / fake CAPTCHA / paste-and-run social engineering delivery",
+    "Replay of stolen authenticated sessions after MFA (ATT&CK T1550.004)",
+    "Browser-profile access combined with DPAPI/AES decryption and outbound transfer",
+    "Credential theft via browser extensions, injected scripts or process-memory access",
+    "Mining behavior correlation: sustained CPU + miner arguments + pool connection (T1496.001)",
+    "Persistence of miners through Run keys, scheduled tasks, WMI or services",
 ]
 
 ATTACK_TECHNIQUES = [
@@ -51,6 +56,21 @@ ATTACK_TECHNIQUES = [
     {"id": "T1059.001", "name": "PowerShell", "url": "https://attack.mitre.org/techniques/T1059/001/"},
     {"id": "T1071.001", "name": "Web Protocols", "url": "https://attack.mitre.org/techniques/T1071/001/"},
     {"id": "T1567.002", "name": "Exfiltration to Cloud Storage", "url": "https://attack.mitre.org/techniques/T1567/002/"},
+    {"id": "T1550.004", "name": "Web Session Cookie", "url": "https://attack.mitre.org/techniques/T1550/004/"},
+    {"id": "T1185", "name": "Browser Session Hijacking", "url": "https://attack.mitre.org/techniques/T1185/"},
+    {"id": "T1056.003", "name": "Web Portal Capture", "url": "https://attack.mitre.org/techniques/T1056/003/"},
+    {"id": "T1496", "name": "Resource Hijacking", "url": "https://attack.mitre.org/techniques/T1496/"},
+    {"id": "T1496.001", "name": "Compute Hijacking", "url": "https://attack.mitre.org/techniques/T1496/001/"},
+]
+
+TRACKED_MINER_TOOLS = [
+    {"name": "XMRig", "note": "Legitimate open-source RandomX/CryptoNight miner that is also frequently repurposed in cryptojacking. Name alone is not treated as proof of compromise."},
+    {"name": "CPUMiner / minerd", "note": "CPU mining software; unexpected background execution with pool traffic and sustained CPU is suspicious."},
+    {"name": "T-Rex Miner", "note": "GPU mining software; its presence can be legitimate, so LEDERG correlates command-line and process behavior."},
+    {"name": "PhoenixMiner", "note": "GPU mining software; a filename match alone never triggers automatic termination."},
+    {"name": "NBMiner / lolMiner", "note": "GPU mining tools; unexpected execution, pool configuration and sustained resource use are correlated."},
+    {"name": "GMiner / SRBMiner", "note": "Mining software families monitored through process arguments, CPU activity and network indicators."},
+    {"name": "TeamRedMiner / NanoMiner", "note": "Mining tools whose command-line patterns and pool connections can be part of behavioral triage."},
 ]
 
 PROTECTION_GUIDANCE = [
@@ -59,6 +79,8 @@ PROTECTION_GUIDANCE = [
     {"title": "ASR: block credential stealing from LSASS", "detail": "Microsoft documents an Attack Surface Reduction rule for LSASS credential theft. Test policy first; LSA protection may already provide equivalent protection and ASR audit can be noisy.", "source": "https://learn.microsoft.com/en-us/defender-endpoint/attack-surface-reduction-rules-reference"},
     {"title": "Sysmon endpoint telemetry", "detail": "Optional Sysmon events 1, 3, 10, 11 and 22 can provide process, network, process-access, file-create and DNS-query context. Sysmon is not installed or configured by LEDERG.", "source": "https://learn.microsoft.com/en-us/windows/security/operating-system-security/sysmon/sysmon-configuration-files"},
     {"title": "Valid Authenticode signatures", "detail": "A valid signature is useful for reducing false positives when combined with the expected install path. A signature alone does not prove software is safe.", "source": "https://learn.microsoft.com/powershell/module/microsoft.powershell.security/get-authenticodesignature"},
+    {"title": "Session-theft response", "detail": "A stolen authenticated session cookie can let an attacker reuse an already authenticated session and bypass some MFA prompts. It does not reveal the current one-time code or the second factor itself. After suspected infection, use a clean device to revoke all active sessions, sign out all devices, rotate passwords and review recovery methods.", "source": "https://attack.mitre.org/techniques/T1539/"},
+    {"title": "Phishing-resistant MFA", "detail": "Prefer passkeys or FIDO2 security keys where supported. MFA reduces account takeover risk, but session-token theft still requires session revocation and endpoint cleanup.", "source": "https://attack.mitre.org/techniques/T1550/004/"},
     {"title": "Updates and multi-factor authentication", "detail": "Keep browsers and password managers updated; use phishing-resistant MFA where available and review stored passwords and active sessions after a suspected infection.", "source": "https://attack.mitre.org/techniques/T1555/"},
 ]
 
@@ -88,6 +110,11 @@ SOURCES = [
     {"name": "MITRE ATT&CK — XLoader / Formbook", "url": "https://attack.mitre.org/software/S1207/"},
     {"name": "MITRE ATT&CK — Agent Tesla", "url": "https://attack.mitre.org/software/S0331/"},
     {"name": "MITRE ATT&CK — StrelaStealer", "url": "https://attack.mitre.org/software/S1183/"},
+    {"name": "MITRE ATT&CK — Steal Web Session Cookie (T1539)", "url": "https://attack.mitre.org/techniques/T1539/"},
+    {"name": "MITRE ATT&CK — Web Session Cookie (T1550.004)", "url": "https://attack.mitre.org/techniques/T1550/004/"},
+    {"name": "MITRE ATT&CK — Session Cookie Detection (DET0074)", "url": "https://attack.mitre.org/detectionstrategies/DET0074/"},
+    {"name": "MITRE ATT&CK — Resource Hijacking (DET0267)", "url": "https://attack.mitre.org/detectionstrategies/DET0267/"},
+    {"name": "MITRE ATT&CK — Compute Hijacking (DET0540)", "url": "https://attack.mitre.org/detectionstrategies/DET0540/"},
     {"name": "Recorded Future — 2025 Year in Review", "url": "https://assets.recordedfuture.com/insikt-report-pdfs/2026/cta-2026-0319.pdf"},
     {"name": "Red Canary — Info Stealers 2025", "url": "https://redcanary.com/threat-detection-report/trends/info-stealers/"},
     {"name": "abuse.ch / Spamhaus — malware intelligence feeds", "url": "https://abusech-docs.spamhaus.com/api-reference"},
