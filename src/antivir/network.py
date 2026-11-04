@@ -8,6 +8,7 @@ import socket
 import subprocess
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PureWindowsPath
@@ -16,6 +17,7 @@ from typing import Callable
 import psutil
 
 from .core import is_exact_ioc_file, quarantine_file
+from .behavior import assess_process_behavior
 
 KNOWN_BAD_NAMES = {"svchost32.exe", "cloudsynchost.exe", "csyncwatch.exe"}
 KNOWN_BAD_PATHS = ("\\windowshelper\\", "\\cloudsyncdata\\", "\\cloudsyncwatcher\\")
@@ -319,6 +321,8 @@ class NetworkMonitor:
         self._thread: threading.Thread | None = None
         self._seen: dict[tuple, float] = {}
         self._auto_contained: set[str] = set()
+        self._cpu_samples: dict[int, deque[float]] = {}
+        self._behavior_seen: dict[tuple[int, str], tuple[float, int]] = {}
         self.last_error: str | None = None
 
     @property
@@ -381,10 +385,117 @@ class NetworkMonitor:
         self._auto_contained.add(path_key)
         return " · ".join(actions)
 
+    def _auto_contain_behavior(self, pid: int, process_path: str) -> str:
+        """Contain only a high-confidence miner: outbound block + terminate, never auto-delete."""
+        if not process_path:
+            return "Автоблокировка пропущена: путь процесса недоступен"
+        executable = Path(process_path)
+        if executable.suffix.lower() != ".exe" or executable.name.casefold() in PROTECTED_PROCESS_NAMES:
+            return "Автоблокировка пропущена: защищённый или неподдерживаемый процесс"
+        try:
+            resolved = executable.resolve(strict=True)
+            resolved.relative_to(_windows_root())
+            return "Автоблокировка пропущена: системный каталог Windows"
+        except ValueError:
+            pass
+        except OSError as exc:
+            return f"Автоблокировка пропущена: файл недоступен ({exc})"
+
+        actions: list[str] = []
+        try:
+            actions.append(block_process_outbound(resolved))
+        except Exception as exc:
+            actions.append(f"Правило Firewall не создано: {exc}")
+        try:
+            process = psutil.Process(pid)
+            current_path = process.exe()
+            if os.path.normcase(os.path.abspath(current_path)) != os.path.normcase(os.path.abspath(str(resolved))):
+                actions.append("Остановка отменена: PID уже принадлежит другому процессу")
+            else:
+                process.terminate()
+                process.wait(timeout=3)
+                actions.append("Процесс майнера остановлен")
+        except (psutil.NoSuchProcess, psutil.ZombieProcess):
+            actions.append("Процесс уже завершился")
+        except Exception as exc:
+            actions.append(f"Остановка процесса не выполнена: {exc}")
+        return " · ".join(actions)
+
+    def _scan_process_behavior(self, ports_by_pid: dict[int, set[int]], now: float) -> list[NetworkEvent]:
+        events: list[NetworkEvent] = []
+        live_pids: set[int] = set()
+        for process in psutil.process_iter(["pid", "name", "exe", "cmdline"]):
+            try:
+                info = process.info
+                pid = int(info.get("pid") or process.pid)
+                name = str(info.get("name") or "")
+                if not name:
+                    continue
+                live_pids.add(pid)
+                cpu = float(process.cpu_percent(interval=None))
+                samples = self._cpu_samples.setdefault(pid, deque(maxlen=4))
+                samples.append(cpu)
+                sustained = len(samples) == 4 and sum(value >= 60.0 for value in samples) >= 3
+                path = str(info.get("exe") or "")
+                command_line = " ".join(info.get("cmdline") or [])
+                assessment = assess_process_behavior(
+                    name, path, command_line,
+                    cpu_sustained=sustained,
+                    network_ports=ports_by_pid.get(pid, set()),
+                )
+            except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess, OSError, TypeError, ValueError):
+                continue
+
+            if assessment.category == "none" or assessment.score < 35:
+                continue
+            key = (pid, assessment.category)
+            previous = self._behavior_seen.get(key)
+            if previous and now - previous[0] < 90 and assessment.score <= previous[1] + 10:
+                continue
+            self._behavior_seen[key] = (now, assessment.score)
+
+            action = "Поведенческие признаки требуют проверки"
+            if self.auto_block and assessment.auto_block_eligible:
+                action = self._auto_contain_behavior(pid, path)
+
+            event = NetworkEvent(
+                datetime.now(timezone.utc).astimezone().strftime("%H:%M:%S"),
+                pid,
+                name,
+                path,
+                "Поведенческий анализ",
+                0,
+                "BEHAVIOR",
+                assessment.category.upper(),
+                assessment.score,
+                assessment.severity,
+                assessment.reasons,
+                assessment.auto_block_eligible,
+                action,
+                False,
+            )
+            events.append(event)
+            self.callback(event)
+
+        stale_pids = set(self._cpu_samples) - live_pids
+        for pid in stale_pids:
+            self._cpu_samples.pop(pid, None)
+        self._behavior_seen = {
+            key: value for key, value in self._behavior_seen.items()
+            if now - value[0] < 600
+        }
+        return events
+
     def poll_once(self) -> list[NetworkEvent]:
         now = time.monotonic()
         current: list[NetworkEvent] = []
         connections = psutil.net_connections(kind="inet")
+        ports_by_pid: dict[int, set[int]] = {}
+        for connection in connections:
+            if not connection.pid or not connection.raddr:
+                continue
+            remote_port = getattr(connection.raddr, "port", None) or connection.raddr[1]
+            ports_by_pid.setdefault(int(connection.pid), set()).add(int(remote_port))
         self._seen = {key: timestamp for key, timestamp in self._seen.items() if now - timestamp < 90}
         for conn in connections:
             is_udp = conn.type == socket.SOCK_DGRAM
@@ -434,4 +545,5 @@ class NetworkMonitor:
                     event.action = f"Автозащита не завершена: {exc}"
             current.append(event)
             self.callback(event)
+        current.extend(self._scan_process_behavior(ports_by_pid, now))
         return current
