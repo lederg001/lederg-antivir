@@ -22,7 +22,7 @@ from antivir.network import (
 from antivir.protection import ProtectionCheck, get_security_posture
 from antivir.threat_intel import (
     ATTACK_TECHNIQUES, COMMON_BEHAVIORS, PROTECTION_GUIDANCE,
-    COMMON_SERVICE_DOMAINS, SOURCES, THREAT_FEEDS, TRACKED_FAMILIES,
+    COMMON_SERVICE_DOMAINS, SOURCES, THREAT_FEEDS, TRACKED_FAMILIES, TRACKED_MINER_TOOLS,
 )
 from antivir.startup import (
     StartupEntry, build_autostart_command, is_run_at_logon_enabled,
@@ -393,6 +393,25 @@ class App(tk.Tk):
         tk.Label(profile_text, text="LOCAL PROTECTION", bg="#101722", fg=MUTED,
                  font=("Segoe UI", 7)).pack(anchor="w")
 
+        contacts = tk.Frame(sidebar, bg=SIDEBAR)
+        contacts.pack(fill="x", padx=12, pady=(0, 12))
+        tk.Label(contacts, text="СВЯЗЬ С РАЗРАБОТЧИКОМ", bg=SIDEBAR, fg="#687589",
+                 font=("Segoe UI Semibold", 7)).pack(anchor="w", padx=3, pady=(0, 5))
+        tk.Button(
+            contacts, text="TG  @LEDERG_ru",
+            command=lambda: webbrowser.open("https://t.me/LEDERG_ru"),
+            bg="#111a28", fg=TEXT, activebackground=PANEL_ALT, activeforeground=TEXT,
+            relief="flat", bd=0, anchor="w", padx=9, pady=6, cursor="hand2",
+            font=("Segoe UI Semibold", 8),
+        ).pack(fill="x", pady=2)
+        tk.Button(
+            contacts, text="DISCORD  /  LEDERG",
+            command=lambda: webbrowser.open("https://discord.gg/kDRMWqKmZp"),
+            bg="#111a28", fg=TEXT, activebackground=PANEL_ALT, activeforeground=TEXT,
+            relief="flat", bd=0, anchor="w", padx=9, pady=6, cursor="hand2",
+            font=("Segoe UI Semibold", 8),
+        ).pack(fill="x", pady=2)
+
         workspace = tk.Frame(self.shell, bg=BG)
         workspace.pack(side="left", fill="both", expand=True)
         header = tk.Frame(workspace, bg=BG)
@@ -436,7 +455,7 @@ class App(tk.Tk):
             "network": ("СЕТЬ И ПРОЦЕССЫ", "Контроль внешних соединений и действий приложений"),
             "quarantine": ("КАРАНТИН", "Изолированные файлы с проверкой целостности SHA-256"),
             "protection": ("ЦЕНТР ЗАЩИТЫ", "Состояние встроенных механизмов безопасности Windows"),
-            "threats": ("БАЗА УГРОЗ", "Семейства стиллеров, техники атак и источники данных"),
+            "threats": ("БАЗА УГРОЗ", "Стиллеры, кража сессий, криптомайнеры и техники обнаружения"),
             "trusted": ("ДОВЕРЕННЫЕ ПРИЛОЖЕНИЯ", "Проверка издателя и пути вместо слепого доверия имени или домену"),
             "startup": ("АВТОЗАГРУЗКА", "Run / RunOnce, папки Startup, подписи и подозрительные параметры запуска"),
         }
@@ -469,9 +488,9 @@ class App(tk.Tk):
         self.hero_status = tk.Label(left, text="СИСТЕМА ГОТОВА К ПРОВЕРКЕ", bg=PANEL, fg=TEXT,
                                     font=("Segoe UI Black", 22))
         self.hero_status.pack(anchor="w", pady=(9, 4))
-        tk.Label(left, text="Одна кнопка проверит файлы, сетевые процессы и точки автозагрузки\n"
-                            "собственным движком LEDERG. При включённой автозащите точные IOC\n"
-                            "можно автоматически остановить и отправить в карантин.",
+        tk.Label(left, text="LEDERG проверяет файлы и автозагрузку, а монитор в фоне анализирует процессы,\n"
+                            "CPU-нагрузку и признаки подключения майнеров к пулам. При включённой\n"
+                            "автозащите высокоуверенные майнеры блокируются, точные IOC стиллеров изолируются.",
                  bg=PANEL, fg=MUTED, justify="left", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 16))
         actions = tk.Frame(left, bg=PANEL)
         actions.pack(anchor="w")
@@ -564,7 +583,7 @@ class App(tk.Tk):
         head.pack(fill="x", padx=16, pady=(14, 8))
         tk.Label(head, text="ЖИВЫЕ СОЕДИНЕНИЯ", bg=PANEL, fg=TEXT,
                  font=("Segoe UI Semibold", 11)).pack(side="left")
-        tk.Label(panel, text="Показываются адреса, порты и процессы. Содержимое HTTPS и пароли не перехватываются.",
+        tk.Label(panel, text="Показываются IP/порты, процессы и поведенческие сигналы стиллеров/майнеров. Содержимое HTTPS, cookies и пароли не перехватываются.",
                  bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=16, pady=(0, 8))
         columns = ("time", "process", "pid", "destination", "risk", "status", "action")
         self.net_tree = ttk.Treeview(panel, columns=columns, show="headings")
@@ -651,9 +670,9 @@ class App(tk.Tk):
     def _build_threat_page(self):
         summary = tk.Frame(self.page_host, bg=PANEL, highlightthickness=1, highlightbackground=BORDER)
         summary.pack(fill="x", pady=(0, 12))
-        tk.Label(summary, text=f"{len(TRACKED_FAMILIES)} семейств и вариантов в справочной базе",
+        tk.Label(summary, text=f"{len(TRACKED_FAMILIES)} семейств стиллеров  ·  {len(TRACKED_MINER_TOOLS)} инструментов майнинга",
                  bg=PANEL, fg=TEXT, font=("Segoe UI Semibold", 13)).pack(anchor="w", padx=16, pady=(13, 4))
-        tk.Label(summary, text="Это база контекста и техник атак, а не 25 отдельных сигнатур детектирования.",
+        tk.Label(summary, text="Справочная база и поведенческие правила. Название майнера само по себе не считается доказательством заражения.",
                  bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=16, pady=(0, 13))
         body = tk.Frame(self.page_host, bg=PANEL, highlightthickness=1, highlightbackground=BORDER)
         body.pack(fill="both", expand=True)
@@ -669,12 +688,20 @@ class App(tk.Tk):
             text.insert("end", f"• {family['name']}  ·  {family['platform']}\n", "family")
             text.insert("end", f"  {family['note']}\n")
             text.insert("end", f"  Источник: {family['source']}\n\n", "link")
+        text.insert("end", "\nМАЙНИНГОВЫЕ ИНСТРУМЕНТЫ / КОНТЕКСТ\n", "heading")
+        for miner in TRACKED_MINER_TOOLS:
+            text.insert("end", f"• {miner['name']}\n", "family")
+            text.insert("end", f"  {miner['note']}\n\n")
         text.insert("end", "\nПОВЕДЕНЧЕСКИЕ ТЕХНИКИ\n", "heading")
         for behavior in COMMON_BEHAVIORS:
             text.insert("end", f"• {behavior}\n")
         text.insert("end", "\nMITRE ATT&CK\n", "heading")
         for item in ATTACK_TECHNIQUES:
             text.insert("end", f"• {item['id']} — {item['name']}  {item['url']}\n", "link")
+        text.insert("end", "\nКРАЖА СЕССИЙ И MFA / 2FA\n", "heading")
+        text.insert("end", "Кража активной session-cookie или access token может позволить злоумышленнику использовать уже подтверждённую сессию и обойти повторный запрос MFA. Это НЕ означает, что стиллер узнаёт одноразовый код или секрет второго фактора. После подозрения на заражение нужно с чистого устройства завершить все активные сессии, отозвать токены, сменить пароль и проверить способы восстановления аккаунта.\n", "note")
+        text.insert("end", "\nПОВЕДЕНЧЕСКАЯ БЛОКИРОВКА МАЙНЕРОВ\n", "heading")
+        text.insert("end", "Монитор сверяет имя/аргументы майнера, устойчивую CPU-нагрузку в нескольких замерах и сетевой порт/адрес пула. Автоматическая остановка включается только при высокой суммарной оценке и включённой автозащите. Файл автоматически не удаляется.\n", "note")
         text.insert("end", "\nДОПОЛНИТЕЛЬНЫЕ МЕРЫ ЗАЩИТЫ\n", "heading")
         for item in PROTECTION_GUIDANCE:
             text.insert("end", f"• {item['title']}\n", "family")
@@ -1061,7 +1088,7 @@ class App(tk.Tk):
             self.after(0, self._refresh_quarantine_count)
 
     def _insert_network_row(self, event: NetworkEvent):
-        destination = f"{event.remote_address}:{event.remote_port}"
+        destination = event.remote_address if event.protocol == "BEHAVIOR" else f"{event.remote_address}:{event.remote_port}"
         reasons = "; ".join(event.reasons) if event.reasons else (
             "Действительная подпись и ожидаемый путь" if event.trusted_application else "Внешнее соединение"
         )
