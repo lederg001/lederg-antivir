@@ -8,7 +8,7 @@ import tkinter as tk
 import webbrowser
 from datetime import datetime
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 
 # Make the src-layout package importable from source and the PyInstaller executable.
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
@@ -29,6 +29,7 @@ from antivir.startup import (
     scan_startup_entries, set_run_at_logon,
 )
 from antivir.ui import PillButton, pop_event_batch
+from antivir.ioc_feeds import update_threat_feeds
 
 APP = "LEDERG ANTIVIR"
 BASE = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "LEDERG ANTIVIR"
@@ -714,6 +715,10 @@ class App(tk.Tk):
         search_entry = ttk.Entry(searchbar, textvariable=self.threat_search_var)
         search_entry.pack(side="left", fill="x", expand=True, ipady=5, padx=(0, 8))
         self._button(searchbar, "НАЙТИ В БАЗЕ", lambda: self._search_threat_text(text), compact=True).pack(side="right")
+        self.threat_update_button = self._button(
+            searchbar, "ОБНОВИТЬ IOC", self._update_threat_feeds, compact=True,
+        )
+        self.threat_update_button.pack(side="right", padx=(0, 8))
         search_entry.bind("<Return>", lambda _event: self._search_threat_text(text))
         text = tk.Text(body, bg=PANEL, fg=TEXT, insertbackground=TEXT, relief="flat",
                        font=("Segoe UI", 9), wrap="word", padx=18, pady=14)
@@ -772,6 +777,58 @@ class App(tk.Tk):
         widget.tag_add("search_hit", position, end)
         widget.see(position)
         self.status.set(f"Найдено совпадение: {query}")
+
+    def _update_threat_feeds(self):
+        auth_key = simpledialog.askstring(
+            APP,
+            "Введите бесплатный Auth-Key abuse.ch. Ключ используется только для запроса и не сохраняется.\n\n"
+            "Получить ключ: https://auth.abuse.ch/",
+            show="*",
+        )
+        if not auth_key:
+            return
+        try:
+            self.threat_update_button.configure(state="disabled", text="ОБНОВЛЯЮ IOC…")
+        except tk.TclError:
+            pass
+        self.status.set("Обновляю локальные SHA-256 и доменные IOC из MalwareBazaar / ThreatFox…")
+
+        def worker():
+            try:
+                result = update_threat_feeds(auth_key, BASE / "threat_iocs.json")
+                error = None
+            except Exception as exc:
+                result = None
+                error = str(exc)
+            try:
+                self.after(0, lambda values=result, problem=error: self._finish_threat_feed_update(values, problem))
+            except (RuntimeError, tk.TclError):
+                pass
+
+        threading.Thread(target=worker, name="LEDERG-ThreatIntelUpdate", daemon=True).start()
+
+    def _finish_threat_feed_update(self, result: dict | None, error: str | None):
+        try:
+            self.threat_update_button.configure(state="normal", text="ОБНОВИТЬ IOC")
+        except (AttributeError, tk.TclError):
+            pass
+        if error:
+            self.status.set(f"Обновление IOC не выполнено: {error}")
+            messagebox.showerror(APP, f"Не удалось обновить threat-intel feeds:\n{error}")
+            return
+        self.status.set(
+            f"IOC обновлены: {result['hashes']} SHA-256 · {result['domains']} доменов. "
+            f"Новых: {result['new_hashes']} хэшей / {result['new_domains']} доменов."
+        )
+        messagebox.showinfo(
+            APP,
+            f"База IOC обновлена.\n\n"
+            f"SHA-256: {result['hashes']}\n"
+            f"Домены: {result['domains']}\n"
+            f"Новых хэшей: {result['new_hashes']}\n"
+            f"Новых доменов: {result['new_domains']}\n\n"
+            "Ключ API не сохранялся. Образцы вредоносных файлов не скачивались.",
+        )
 
     def _open_selected_url(self, widget):
         try:
