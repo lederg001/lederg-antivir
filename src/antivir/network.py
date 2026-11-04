@@ -105,13 +105,13 @@ def build_firewall_block_args(executable: Path) -> list[str]:
     name = f"LEDERG ANTIVIR Outbound {rule_id}"
     return [
         "advfirewall", "firewall", "add", "rule",
-        f"name={name}", "dir=out", "action=block", f"program={executable}",
+        f'name="{name}"', "dir=out", "action=block", f'program="{executable}"',
         "enable=yes", "profile=any",
     ]
 
 
 def build_firewall_unblock_args(executable: Path) -> list[str]:
-    executable = Path(executable).expanduser().resolve(strict=True)
+    executable = Path(executable).expanduser().resolve()
     rule_id = hashlib.sha256(str(executable).casefold().encode("utf-8")).hexdigest()[:12]
     return ["advfirewall", "firewall", "delete", "rule", f"name=LEDERG ANTIVIR Outbound {rule_id}"]
 
