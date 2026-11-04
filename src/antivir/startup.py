@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -89,7 +90,23 @@ def assess_startup_entry(
     target_exists: bool,
     signature_valid: bool,
     publisher: str | None = None,
+    own_application: bool = False,
 ) -> StartupEntry:
+    if own_application:
+        return StartupEntry(
+            name=name,
+            source=source,
+            command=command,
+            target=target,
+            score=0,
+            severity="trusted",
+            reasons=["Собственное приложение LEDERG ANTIVIR: точка автозапуска защищена от самодетектирования"],
+            signature_valid=signature_valid,
+            publisher=publisher,
+            target_exists=target_exists,
+            auto_quarantine_eligible=False,
+        )
+
     normalized_target = (target or "").lower().replace("/", "\\")
     normalized_command = (command or "").lower()
     filename = normalized_target.rsplit("\\", 1)[-1]
@@ -233,7 +250,38 @@ def _resolve_shortcut(path: Path) -> str:
         return ""
 
 
-def _inspect_target(name: str, source: str, command: str, target: str) -> StartupEntry:
+def _same_windows_path(left: str, right: str) -> bool:
+    try:
+        return os.path.normcase(os.path.abspath(left)) == os.path.normcase(os.path.abspath(right))
+    except (OSError, TypeError, ValueError):
+        return False
+
+
+def _is_our_autostart_entry(name: str, command: str, target: str) -> bool:
+    """Trust only our exact HKCU Run value pointing to this running build."""
+    if name.casefold() != APP_RUN_VALUE.casefold() or not target:
+        return False
+    try:
+        running_executable = str(Path(sys.executable).resolve())
+        if _same_windows_path(target, running_executable):
+            return True
+        if not getattr(sys, "frozen", False):
+            pythonw = str(Path(running_executable).with_name("pythonw.exe"))
+            app_script = str((Path(__file__).resolve().parents[2] / "app.py").resolve())
+            return _same_windows_path(target, pythonw) and os.path.normcase(app_script) in os.path.normcase(command)
+    except (OSError, RuntimeError):
+        return False
+    return False
+
+
+def _inspect_target(
+    name: str,
+    source: str,
+    command: str,
+    target: str,
+    *,
+    own_application: bool = False,
+) -> StartupEntry:
     path = Path(target) if target else Path()
     exists = bool(target and path.is_file())
     signature_valid = False
@@ -245,6 +293,7 @@ def _inspect_target(name: str, source: str, command: str, target: str) -> Startu
         target_exists=exists,
         signature_valid=signature_valid,
         publisher=publisher,
+        own_application=own_application,
     )
 
 
@@ -291,7 +340,10 @@ def scan_startup_entries() -> list[StartupEntry]:
                     if not isinstance(command, str) or not command.strip():
                         continue
                     target = extract_executable_path(command)
-                    entries.append(_inspect_target(value_name, source, command, target))
+                    entries.append(_inspect_target(
+                        value_name, source, command, target,
+                        own_application=_is_our_autostart_entry(value_name, command, target),
+                    ))
         except OSError:
             continue
 
