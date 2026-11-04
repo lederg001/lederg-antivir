@@ -28,6 +28,7 @@ from antivir.startup import (
     StartupEntry, build_autostart_command, is_run_at_logon_enabled,
     scan_startup_entries, set_run_at_logon,
 )
+from antivir.ui import PillButton
 
 APP = "LEDERG ANTIVIR"
 BASE = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "LEDERG ANTIVIR"
@@ -74,8 +75,11 @@ class App(tk.Tk):
         self.scan_rows: dict[str, ScanResult] = {}
         self.startup_rows: dict[str, StartupEntry] = {}
         self.q_records: dict[str, tuple[Path, Path, Path, bool]] = {}
-        self.nav_buttons: dict[str, tk.Button] = {}
+        self.nav_buttons: dict[str, PillButton] = {}
         self.stat_values: list[tk.Label] = []
+        self._page_frames: dict[str, tk.Frame] = {}
+        self._built_pages: set[str] = set()
+        self.current_page = "home"
         self.monitor = NetworkMonitor(self._on_network_event, interval=2.5, quarantine_dir=QUARANTINE)
         self.monitor.auto_block = self.auto_protect_enabled
         self.monitor.auto_quarantine = self.auto_protect_enabled
@@ -165,11 +169,11 @@ class App(tk.Tk):
             widget.bind("<Double-Button-1>", lambda _event: self._toggle_maximize())
 
     def _title_button(self, parent, label, command, background, active, hover=None):
-        return tk.Button(
-            parent, text=label, command=command, bg=background, fg=TEXT,
-            activebackground=hover or active, activeforeground="white",
-            relief="flat", bd=0, width=5, cursor="hand2",
-            font=("Segoe UI", 11 if label != "×" else 13),
+        return PillButton(
+            parent, label, command, background=background, foreground=TEXT,
+            hover_background=hover or active,
+            font=("Segoe UI Semibold", 12 if label != "×" else 14),
+            width=50, height=42, padding_x=0, padding_y=0, radius=13,
         )
 
     def _start_window_drag(self, event):
@@ -315,12 +319,13 @@ class App(tk.Tk):
     def _button(self, parent, label, command, primary=False, compact=False, danger=False):
         background = RED if primary else RED_DARK if danger else PANEL_ALT
         active = RED_HOVER if primary else "#86283a" if danger else "#263244"
-        return tk.Button(
-            parent, text=label, command=command, cursor="hand2",
-            bg=background, fg="white", activebackground=active, activeforeground="white",
-            relief="flat", bd=0, highlightthickness=0,
+        return PillButton(
+            parent, label, command, background=background, foreground="white",
+            hover_background=active,
             font=("Segoe UI Semibold", 10 if not compact else 9),
-            padx=18 if not compact else 13, pady=12 if not compact else 8,
+            padding_x=18 if not compact else 13,
+            padding_y=11 if not compact else 8,
+            radius=18,
         )
 
     def _shield(self, parent, size=74, background=PANEL):
@@ -368,14 +373,14 @@ class App(tk.Tk):
             ("startup", "▤", "Автозагрузка"),
         ]
         for key, icon, title in nav_items:
-            button = tk.Button(
-                sidebar, text=f"  {icon}    {title}", anchor="w",
+            button = PillButton(
+                sidebar, text=f"{icon}    {title}",
                 command=lambda page=key: self.show_page(page),
-                bg=SIDEBAR, fg="#aeb8c8", activebackground=PANEL_ALT, activeforeground=TEXT,
-                relief="flat", bd=0, padx=17, pady=14, cursor="hand2",
+                background=SIDEBAR, foreground="#aeb8c8", hover_background=PANEL_ALT,
+                anchor="w", padding_x=16, padding_y=12, height=46, radius=15,
                 font=("Segoe UI Semibold", 10),
             )
-            button.pack(fill="x", padx=9, pady=2)
+            button.pack(fill="x", padx=9, pady=3)
             self.nav_buttons[key] = button
 
         spacer = tk.Frame(sidebar, bg=SIDEBAR)
@@ -397,18 +402,18 @@ class App(tk.Tk):
         contacts.pack(fill="x", padx=12, pady=(0, 12))
         tk.Label(contacts, text="СВЯЗЬ С РАЗРАБОТЧИКОМ", bg=SIDEBAR, fg="#687589",
                  font=("Segoe UI Semibold", 7)).pack(anchor="w", padx=3, pady=(0, 5))
-        tk.Button(
+        PillButton(
             contacts, text="TG  @LEDERG_ru",
             command=lambda: webbrowser.open("https://t.me/LEDERG_ru"),
-            bg="#111a28", fg=TEXT, activebackground=PANEL_ALT, activeforeground=TEXT,
-            relief="flat", bd=0, anchor="w", padx=9, pady=6, cursor="hand2",
+            background="#111a28", foreground=TEXT, hover_background=PANEL_ALT,
+            anchor="w", padding_x=10, padding_y=7, height=34, radius=12,
             font=("Segoe UI Semibold", 8),
         ).pack(fill="x", pady=2)
-        tk.Button(
+        PillButton(
             contacts, text="DISCORD  /  LEDERG",
             command=lambda: webbrowser.open("https://discord.gg/kDRMWqKmZp"),
-            bg="#111a28", fg=TEXT, activebackground=PANEL_ALT, activeforeground=TEXT,
-            relief="flat", bd=0, anchor="w", padx=9, pady=6, cursor="hand2",
+            background="#111a28", foreground=TEXT, hover_background=PANEL_ALT,
+            anchor="w", padding_x=10, padding_y=7, height=34, radius=12,
             font=("Segoe UI Semibold", 8),
         ).pack(fill="x", pady=2)
 
@@ -436,6 +441,7 @@ class App(tk.Tk):
         tk.Frame(workspace, bg=RED, height=2).pack(fill="x", padx=28, pady=(0, 16))
         self.page_host = tk.Frame(workspace, bg=BG)
         self.page_host.pack(fill="both", expand=True, padx=28, pady=(0, 14))
+        self.page_container = self.page_host
         footer = tk.Frame(workspace, bg="#0e131c", height=38)
         footer.pack(fill="x", side="bottom")
         footer.pack_propagate(False)
@@ -444,12 +450,17 @@ class App(tk.Tk):
                  padx=14, font=("Segoe UI", 9)).pack(fill="both", expand=True)
 
     def show_page(self, page: str):
-        self.unbind_all("<MouseWheel>")
-        for child in self.page_host.winfo_children():
-            child.destroy()
+        if page not in self._page_builders():
+            return
+        for frame in self._page_frames.values():
+            frame.pack_forget()
         for key, button in self.nav_buttons.items():
-            button.configure(bg=RED_DARK if key == page else SIDEBAR,
-                             fg="white" if key == page else "#aeb8c8")
+            selected = key == page
+            button.configure(
+                background=RED_DARK if selected else SIDEBAR,
+                foreground="white" if selected else "#aeb8c8",
+                hover_background="#84263a" if selected else PANEL_ALT,
+            )
         headings = {
             "home": ("ОБЗОР СИСТЕМЫ", "Проверка, состояние защиты и последние результаты"),
             "network": ("СЕТЬ И ПРОЦЕССЫ", "Контроль внешних соединений и действий приложений"),
@@ -462,7 +473,28 @@ class App(tk.Tk):
         title, subtitle = headings[page]
         self.page_title.configure(text=title)
         self.page_subtitle.configure(text=subtitle)
-        builders = {
+        builders = self._page_builders()
+        if page not in self._built_pages:
+            frame = tk.Frame(self.page_container, bg=BG)
+            self._page_frames[page] = frame
+            previous_host = self.page_host
+            self.page_host = frame
+            try:
+                builders[page]()
+                self._built_pages.add(page)
+            except Exception:
+                frame.destroy()
+                self._page_frames.pop(page, None)
+                raise
+            finally:
+                self.page_host = previous_host
+        self._page_frames[page].pack(fill="both", expand=True)
+        self.current_page = page
+        if page == "protection":
+            self._refresh_protection_async()
+
+    def _page_builders(self):
+        return {
             "home": self._build_home_page,
             "network": self._build_network_page,
             "quarantine": self._build_quarantine_page,
@@ -471,9 +503,6 @@ class App(tk.Tk):
             "trusted": self._build_trusted_page,
             "startup": self._build_startup_page,
         }
-        builders[page]()
-        if page == "protection":
-            self._refresh_protection_async()
 
     def _build_home_page(self):
         self.stat_values = []
@@ -912,7 +941,9 @@ class App(tk.Tk):
         window_id = canvas.create_window((0, 0), window=content, anchor="nw")
         content.bind("<Configure>", lambda _event: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.bind("<Configure>", lambda event: canvas.itemconfigure(window_id, width=event.width))
-        canvas.bind_all("<MouseWheel>", lambda event: canvas.yview_scroll(int(-1 * (event.delta / 120)), "units"))
+        wheel_scroll = lambda event: canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        canvas.bind("<MouseWheel>", wheel_scroll)
+        content.bind("<MouseWheel>", wheel_scroll)
 
         intro = tk.Frame(content, bg=PANEL, highlightthickness=1, highlightbackground=BORDER)
         intro.pack(fill="x", pady=(0, 12))
