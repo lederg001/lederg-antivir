@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .behavior import assess_stealer_script, is_miner_artifact_name
+from .behavior import STEALER_NAMES, assess_stealer_script, is_miner_artifact_name
 
 @dataclass
 class ScanResult:
@@ -61,6 +61,9 @@ def analyze_file(path: Path) -> ScanResult:
     if path.suffix.lower() == ".exe" and is_miner_artifact_name(path.name):
         reasons.append("Имя файла совпадает с распространённым криптомайнером; нужна проверка процесса и сетевой активности")
         score = max(score, 55)
+    if path.suffix.lower() == ".exe" and path.name.casefold() in STEALER_NAMES:
+        reasons.append("Имя файла совпадает с отслеживаемым семейством инфостиллеров; требуется поведенческая проверка")
+        score = max(score, 60)
 
     if path.suffix.lower() in {".ps1", ".bat", ".cmd", ".vbs", ".js"}:
         try:
@@ -74,6 +77,18 @@ def analyze_file(path: Path) -> ScanResult:
             pass
 
     return ScanResult(path, _sha256(path), min(score, 100), reasons)
+
+
+def should_auto_quarantine(result: ScanResult) -> bool:
+    """Allow automatic quarantine only for exact IOC files or high-confidence scripts in user-writable areas."""
+    path = Path(result.path).expanduser().resolve()
+    if is_exact_ioc_file(path):
+        return True
+    if result.score < 90 or path.suffix.casefold() not in {".ps1", ".bat", ".cmd", ".vbs", ".js"}:
+        return False
+    normalized = str(path).casefold().replace("/", "\\\\")
+    writable = any(marker in normalized for marker in ("\\\\appdata\\\\", "\\\\temp\\\\", "\\\\downloads\\\\", "\\\\public\\\\"))
+    return writable and not _is_protected(path)
 
 
 def is_exact_ioc_file(path: Path | str) -> bool:
