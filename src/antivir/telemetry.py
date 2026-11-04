@@ -109,6 +109,29 @@ def assess_sysmon_event(event: SysmonEvent):
                 score = min(100, score + 10)
             reasons.append("Процесс запущен из Temp или Downloads")
 
+    elif event.event_id == 22:
+        image = data.get("image", "")
+        query_name = data.get("queryname", "").casefold()
+        pool_hints = ("supportxmr", "moneroocean", "nanopool", "2miners", "hashvault", "herominers", "f2pool")
+        if any(hint in query_name for hint in pool_hints):
+            category, score = "network", 55
+            reasons.append("Sysmon Event 22: DNS-запрос к домену, связанному с mining-pool")
+            if any(token in image.casefold() for token in ("\\temp\\", "\\downloads\\", "\\public\\")):
+                score += 10
+                reasons.append("DNS-запрос выполнен процессом из нестандартного каталога")
+
+    elif event.event_id == 13:
+        target = data.get("targetobject", "").casefold()
+        autorun_markers = (
+            "\\\\currentversion\\\\run",
+            "\\\\currentversion\\\\runonce",
+            "\\\\image file execution options",
+            "\\\\services\\\\",
+        )
+        if any(marker in target for marker in autorun_markers):
+            category, score = "persistence", 55
+            reasons.append("Sysmon Event 13: изменён ключ реестра, связанный с автозапуском или службой")
+
     elif event.event_id == 3:
         image = data.get("image", "")
         destination = data.get("destinationhostname", "").casefold()
@@ -135,7 +158,7 @@ class SysmonReader:
     """Incrementally read recent Sysmon events via wevtutil; Sysmon is never installed or changed."""
 
     CHANNEL = "Microsoft-Windows-Sysmon/Operational"
-    QUERY = "*[System[(EventID=1 or EventID=3 or EventID=10 or EventID=11)]]"
+    QUERY = "*[System[(EventID=1 or EventID=3 or EventID=10 or EventID=11 or EventID=13 or EventID=22)]]"
 
     def __init__(self, *, runner=subprocess.run, max_records: int = 100):
         self.runner = runner
