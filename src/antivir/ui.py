@@ -62,6 +62,7 @@ class PillButton(tk.Canvas):
         measured_width = self._font.measure(text) + padding_x * 2
         measured_height = self._font.metrics("linespace") + padding_y * 2
         self._button_height = int(height or measured_height)
+        self._auto_width = width is None
         self._button_width = int(width or measured_width)
         try:
             canvas_background = parent.cget("bg")
@@ -131,6 +132,9 @@ class PillButton(tk.Canvas):
             self._font = tkfont.Font(font=font)
         if anchor is not None:
             self._anchor = anchor
+        if self._auto_width and (text is not None or font is not None):
+            self._button_width = self._font.measure(self._text) + self._padding_x * 2
+            super().configure(width=self._button_width)
         if background is not None or hover is not None:
             self._animate_to(self._hover if self._hovered else self._normal)
         elif foreground is not None or text is not None or font is not None or state is not None or anchor is not None:
