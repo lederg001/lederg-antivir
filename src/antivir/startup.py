@@ -105,7 +105,8 @@ def assess_startup_entry(
         None,
     )
     if suspicious_argument:
-        reasons.append(f"Команда автозагрузки содержит подозрительный параметр: {suspicious_argument.strip()}")
+        display_marker = "-EncodedCommand" if suspicious_argument == "-encodedcommand" else suspicious_argument.strip()
+        reasons.append(f"Команда автозагрузки содержит подозрительный параметр: {display_marker}")
         score = max(score, 75)
 
     if target and not target_exists:
@@ -166,11 +167,11 @@ def build_autostart_command(
     """Build a quoted HKCU Run command that starts minimized to the tray."""
     executable_path = str(Path(executable))
     if frozen:
-        command = subprocess.list2cmdline([executable_path])
+        command = f'"{executable_path}"'
     else:
         if not script:
             raise ValueError("A script path is required for source-mode autostart")
-        command = subprocess.list2cmdline([executable_path, str(Path(script))])
+        command = f'"{executable_path}" "{Path(script)}"'
     return f"{command} --background"
 
 
