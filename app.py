@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import os
+import sys
 import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
+
+# Make the src-layout package importable when launched from source and by PyInstaller.
+sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from antivir.core import analyze_file, quarantine_file, restore_file
 from antivir.network import (
@@ -191,7 +195,7 @@ class App(tk.Tk):
         intel_box.configure(state="disabled")
 
     def _build_footer(self):
-        self.status = tk.StringVar(value="Мониторинг запускается. Никакие файлы и сетевые правила не меняются автоматически.")
+        self.status = tk.StringVar(value="Мониторинг запускается. Автоблокировка выключена.")
         tk.Label(self, textvariable=self.status, anchor="w", bg="#0f1218", fg=MUTED,
                  padx=14, pady=9, font=("Segoe UI", 9)).pack(fill="x", side="bottom")
 
@@ -206,12 +210,13 @@ class App(tk.Tk):
                         else "Автоизоляция выключена. Мониторинг продолжает работать.")
 
     def _on_network_event(self, event: NetworkEvent):
-        self.after(0, lambda e=event: self._insert_network_event(e))
+        try:
+            self.after(0, lambda e=event: self._insert_network_event(e))
+        except RuntimeError:
+            pass
 
     def _insert_network_event(self, event: NetworkEvent):
         self.network_count += 1
-        if event.score >= 35:
-            self.alert_count += 1
         destination = f"{event.remote_address}:{event.remote_port}"
         reasons = "; ".join(event.reasons) if event.reasons else "Внешнее соединение"
         if event.auto_block_eligible:
@@ -229,8 +234,8 @@ class App(tk.Tk):
             self.net_tree.delete(old)
             self.records.pop(old, None)
         self.net_tree.yview_moveto(1)
-        critical = sum(1 for item in self.records.values() if isinstance(item, NetworkEvent) and item.score >= 80)
         suspicious = sum(1 for item in self.records.values() if isinstance(item, NetworkEvent) and item.score >= 35)
+        critical = sum(1 for item in self.records.values() if isinstance(item, NetworkEvent) and item.score >= 80)
         self.stat_values[0].configure(text=str(self.network_count))
         self.stat_values[1].configure(text=str(suspicious))
         self.stat_values[2].configure(text=str(critical))
@@ -250,7 +255,7 @@ class App(tk.Tk):
             return
         if self.monitor.last_error:
             self.live_label.configure(text="● МОНИТОРИНГ: ОГРАНИЧЕН", fg=AMBER)
-            self.status.set(f"Нет полного доступа к сетевой таблице: {self.monitor.last_error}. Запуск от администратора может дать больше телеметрии.")
+            self.status.set(f"Нет полного доступа к сетевой таблице: {self.monitor.last_error}. Запусти приложение с правами администратора.")
         else:
             self.live_label.configure(text="● REAL-TIME MONITORING", fg=GREEN)
         self.after(3000, self._refresh_status)
@@ -271,7 +276,7 @@ class App(tk.Tk):
             Path.home() / "Desktop",
             Path.home() / "Downloads",
             Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Temp",
-            Path(os.environ.get("APPDATA", Path.home())) / "",
+            Path(os.environ.get("APPDATA", Path.home())),
         ]
         self._scan_roots(candidates)
 
@@ -295,7 +300,7 @@ class App(tk.Tk):
                             result = analyze_file(Path(current) / name)
                             self.after(0, lambda r=result: self._scan_add(r))
                             count += 1
-                        except (OSError, PermissionError, ValueError):
+                        except (OSError, ValueError):
                             continue
             self.after(0, lambda n=count: self.status.set(f"Проверка завершена. Файлов проверено: {n}. Автоматического удаления нет."))
         threading.Thread(target=worker, name="LEDERG-FileScan", daemon=True).start()
@@ -362,15 +367,19 @@ class App(tk.Tk):
         for iid in self.q_tree.get_children():
             self.q_tree.delete(iid)
         self.q_records.clear()
+        import hashlib
+        import json
         for metadata in QUARANTINE.glob("*.quarantined.json"):
             try:
-                import json
                 data = json.loads(metadata.read_text(encoding="utf-8"))
                 item_path = Path(data.get("quarantined_path", ""))
                 if not item_path.is_file():
                     continue
-                import hashlib
-                digest = hashlib.sha256(item_path.read_bytes()).hexdigest()
+                digest_obj = hashlib.sha256()
+                with item_path.open("rb") as stream:
+                    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                        digest_obj.update(chunk)
+                digest = digest_obj.hexdigest()
                 valid = digest == data.get("sha256")
                 iid = self.q_tree.insert("", "end", values=(
                     item_path.name, digest[:26] + "…",
@@ -392,10 +401,8 @@ class App(tk.Tk):
             messagebox.showerror(APP, "Хеш не совпадает. Восстановление запрещено.")
             return
         if original.exists():
-            destination = filedialog.asksaveasfilename(
-                title="Выбери новое место восстановления",
-                initialfile=original.name,
-            )
+            destination = filedialog.asksaveasfilename(title="Выбери новое место восстановления",
+                                                       initialfile=original.name)
             if not destination:
                 return
             destination = Path(destination)
