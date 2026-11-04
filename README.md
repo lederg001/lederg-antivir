@@ -1,78 +1,72 @@
 # LEDERG ANTIVIR
 
-**Windows 10/11 x64 endpoint-defense prototype** with a dark LEDERG interface, one-click checks, signed-application recognition, process-linked network telemetry and hash-verified quarantine.
+**Windows 10/11 x64 endpoint-defense prototype** with a custom black/red window frame, system tray, one-click local checks, startup-persistence inspection, signed-application recognition and hash-verified quarantine.
 
-[Download LEDERG ANTIVIR v0.3.0](https://github.com/lederg001/lederg-antivir/releases/tag/v0.3.0) — latest Windows x64 build.
+[Download LEDERG ANTIVIR v0.4.0](https://github.com/lederg001/lederg-antivir/releases/tag/v0.4.0) — latest Windows x64 build.
 
-v0.3.0 adds the refreshed dashboard, stricter signed-app trust checks, exact-IOC auto-containment, and expanded stealer/ATT&CK references.
+> LEDERG ANTIVIR is an independent defensive toolset and endpoint-monitoring prototype, not a certified replacement for a full antivirus engine or Windows kernel file-system minifilter.
 
-> LEDERG ANTIVIR is a defensive companion to Microsoft Defender, not a certified antivirus or a replacement for endpoint protection. Heuristic detections are not proof of malware.
+## User interface and lifecycle
 
-## What users see
+- Custom black LEDERG title bar with minimize-to-tray, maximize/restore and hide controls.
+- System tray menu: show window, quick scan, startup scan, toggle auto-protection and fully exit.
+- Closing the window hides it in the tray; use **Полностью выйти** in the tray menu to stop monitoring and exit.
+- Per-user Windows logon startup is optional. When enabled, LEDERG starts hidden in the tray after sign-in.
+- Auto-protection preference is stored locally in `%LOCALAPPDATA%\\LEDERG ANTIVIR\\settings.json` and restored on the next launch.
+- Enabling auto-protection also offers to register LEDERG in the current user's `HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run` key.
+- The application no longer forces an administrator UAC prompt on every normal launch. Firewall rules still require elevated rights; without them, process stop/quarantine can be limited by Windows permissions.
 
-- **Overview:** a large “ПРОВЕРИТЬ СИСТЕМУ” action, clear scan progress, result counts and direct actions.
-- **Network & processes:** new external connections with process, PID, IP, port, risk and containment state.
-- **Quarantine:** isolated objects, SHA-256 integrity verification and controlled restore.
-- **Protection Center:** read-only status of Microsoft Defender, Windows Firewall, LSA protection, Credential Guard and optional Sysmon telemetry.
-- **Threat database:** tracked infostealer families, MITRE ATT&CK techniques, protection guidance and community-feed references.
-- **Trusted applications:** publisher + expected install path rules and a reference catalogue of common services/domains.
-- The avatar/shield mark is drawn by the application; no remote avatar image or account data is required.
+## One-click local inspection
 
-## One-click system check
+The main **ПРОВЕРИТЬ СИСТЕМУ** action independently reviews EXE/DLL/SCR/BAT/CMD/PS1 files in common user locations (Desktop, Downloads, Temp, AppData and Startup) and scans startup persistence entries. It no longer depends on starting a Microsoft Defender scan to perform its own local analysis.
 
-The main check starts a Microsoft Defender Quick Scan where available and locally reviews executable/script files in common user locations: Desktop, Downloads, Temp, AppData and Startup folders.
+Microsoft Defender status and an optional manual full scan remain available as supplementary Windows features; they are not used as the LEDERG local scanner's detection engine.
 
-Local heuristics calculate SHA-256 and show the exact reasons. A file is not deleted automatically because it happens to be in AppData or Temp. The default state of automatic protection is **OFF**.
+## Startup persistence inspection
+
+The **Автозагрузка** view reads, without modifying them:
+- Current-user and machine `Run` / `RunOnce` registry keys;
+- 32-bit machine `Wow6432Node` Run entries;
+- Explorer policy Run keys;
+- Current-user and all-users Startup folders, including shortcut target resolution where Windows exposes it.
+
+Entries are scored using exact known IOC path/name matches, missing targets, unsigned binaries under writable user locations and suspicious script parameters such as encoded or hidden PowerShell. A valid signature and expected install path can prevent false alarms for known applications.
+
+MITRE ATT&CK documents Registry Run Keys / Startup Folder as persistence technique **T1547.001**. This scanner is a user-mode inventory and heuristic review; it does not cover every persistence mechanism such as services, drivers, WMI subscriptions, scheduled tasks, browser extensions or bootkits.
+
+Startup inspection is read-only: unknown or suspicious entries are shown for review and are not silently deleted or disabled.
 
 ## Trusted applications and false-positive control
 
 Opera, Discord, Chrome, Edge, Firefox, Brave, Steam, Spotify, Telegram, Slack, Zoom, Signal, OneDrive and Dropbox have publisher/path rules.
 
-An application is treated as trusted only if:
-1. Windows reports a valid Authenticode signature;
-2. the certificate subject matches the expected publisher token;
-3. the executable is in a typical install path for that application.
+An application is treated as trusted only if Windows reports a valid Authenticode signature, the certificate subject matches the expected publisher token and the executable is in a typical installation path. A filename alone is never enough; an unsigned `Discord.exe` copied to Temp is not automatically trusted.
 
-A filename alone is never enough. An unsigned `Discord.exe` copied to Temp is not automatically trusted. Signatures are read using PowerShell `Get-AuthenticodeSignature` and cached briefly by file path and modification time.
+The common-domain catalogue is informational rather than a global allowlist. The connection monitor sees process/IP/port metadata, not reliable per-process DNS hostname attribution. Shared CDN and cloud IPs may host both benign and malicious services.
 
-The common-domain catalogue (for example `opera.com`, `discord.com`, `discord.gg`, `google.com`, `microsoft.com`, `telegram.org`, and Steam/Spotify domains) is informational. It is **not** a global domain allowlist: the current monitor sees process/IP/port connection metadata, not reliable per-process DNS hostname attribution. Shared CDN, hosting and cloud IPs can serve both benign and malicious tenants.
+## Automatic protection
 
-## Auto-protection against exact known IOCs
+Auto-protection defaults to **OFF**. When explicitly enabled, its preference persists and LEDERG can restore it after the next Windows sign-in when per-user autostart is active.
 
-Auto-protection can be enabled manually from the overview and requires Windows administrator rights. For a network event, automatic containment is restricted to all of these conditions:
-- exact executable name from the narrow IOC list;
-- known suspicious directory marker from the narrow IOC list;
-- established connection to a public IP.
+Automatic file quarantine is limited to exact previously tracked filename + suspicious path IOC combinations. For eligible network events, LEDERG attempts an outbound Windows Firewall rule, process termination and SHA-256-verified quarantine. Unknown unsigned programs or ordinary AppData processes are not automatically killed based on one weak signal.
 
-For eligible network events, LEDERG attempts to add an outbound Windows Firewall rule, stop the associated process and move the executable to the SHA-256-verified quarantine. For local scans, only the exact filename + path combination is auto-quarantined.
+Firewall rule creation requires administrator rights. Normal startup is not forced to elevate; when running without elevation, Windows may reject the firewall action, and LEDERG reports that result. WARP, Zapret, WinDivert and their protected process names are not blocked or reconfigured.
 
-Automatic containment is deliberately narrow. A suspicious unknown program is reported for user review; it is not automatically killed or quarantined just because it is unsigned or stored in AppData. WARP, Zapret, WinDivert and their protected process names are not blocked or reconfigured.
+## Safe incident response
 
-## Threat intelligence coverage
+LEDERG provides local containment, evidence review and process-specific outbound blocking. It does not flood attacker infrastructure, send deceptive traffic to third-party servers or tamper with systems outside the device owner's control.
 
-The reference catalogue currently tracks Windows and cross-platform families/variants including Vidar, LummaC2, Rhadamanthys, StealC, RedLine, Raccoon Stealer, MetaStealer, RisePro, Meduza, XLoader/Formbook, Agent Tesla, StrelaStealer and other names from public reporting.
+## Threat-intelligence scope
 
-It also documents relevant ATT&CK behavior: browser credential stores, session-cookie theft, LSASS access, startup persistence, PowerShell, web-protocol C2 and cloud-storage exfiltration.
+The reference catalogue tracks public reporting on Vidar, LummaC2, Rhadamanthys, StealC, RedLine, Raccoon Stealer, MetaStealer, RisePro, Meduza, XLoader/Formbook, Agent Tesla, StrelaStealer and other families. It includes MITRE ATT&CK techniques for browser credential stores, session-cookie theft, LSASS access, startup persistence, PowerShell, web-protocol C2 and cloud-storage exfiltration.
 
-**Important:** this catalogue is contextual threat intelligence, not a signature for every listed family. Names in the catalogue do not mean LEDERG can detect every sample of that malware.
-
-### Community feeds
-
-References are included for MalwareBazaar (malware sample hashes and metadata), ThreatFox (malware-related IOCs) and URLhaus (malware distribution URLs and host indicators).
-
-The abuse.ch community API requires an API key. This repository version lists the feeds and documents them, but it does **not yet download, update or apply live IOCs from those services**. No claim of a live continuously updated threat database is made.
-
-## Windows protection status
-
-The Protection Center only reads security posture. It does not change Windows security policy: Defender antivirus and real-time protection state, firewall profile status, LSA protection / Credential Guard registry indicators and optional Sysmon event-log availability.
-
-Microsoft Defender remains enabled and is used for on-demand scans. ASR, LSA protection, Credential Guard and Sysmon should be configured according to device compatibility and administrator policy; LEDERG does not enable these controls automatically.
+This catalogue is contextual intelligence, not a signature for each family. References are included for MalwareBazaar, ThreatFox and URLhaus; live IOC ingestion from these feeds is not yet implemented.
 
 ## Network monitoring scope
 
-The monitor polls established TCP connections and connected UDP sockets (roughly every 2.5 seconds) and records process, PID, executable path where available, remote IP and port. It does **not** sniff packet contents, decrypt HTTPS, inspect passwords/cookies/tokens or prove that data was exfiltrated. Short-lived connections can be missed and process paths may be unavailable if Windows denies access.
+The monitor polls established TCP connections and connected UDP sockets (roughly every 2.5 seconds) and records process, PID, executable path where available, remote IP and port. It does not sniff packet contents, decrypt HTTPS, inspect passwords/cookies/tokens or prove that data was exfiltrated. Short-lived connections can be missed.
 
-Manual process blocking creates a Windows Firewall rule for all outbound connections from that executable path — not just one remote IP/port. Review the target carefully before blocking.
+Manual process blocking creates an outbound Windows Firewall rule for all outbound connections from that executable path, not just one remote IP/port.
 
 ## Run from source
 
@@ -87,21 +81,18 @@ python app.py
 
 ```powershell
 python -m pytest -q
-pyinstaller --noconfirm --clean --onefile --windowed --uac-admin --paths src --name LEDERG-ANTIVIR app.py
+pyinstaller --noconfirm --clean --onefile --windowed --paths src --collect-all pystray --collect-all PIL --name LEDERG-ANTIVIR app.py
 ```
 
-Every push to `main` runs tests and builds a Windows x64 GitHub Actions artifact.
+GitHub Actions runs tests and packages the Windows x64 EXE on every push to `main`.
 
-## Selected public references
+## Selected references
 
-- [MITRE ATT&CK — Vidar](https://attack.mitre.org/software/S9050/)
-- [MITRE ATT&CK — XLoader / Formbook](https://attack.mitre.org/software/S1207/)
-- [MITRE ATT&CK — Agent Tesla](https://attack.mitre.org/software/S0331/)
-- [MITRE ATT&CK — StrelaStealer](https://attack.mitre.org/software/S1183/)
-- [MITRE ATT&CK — Credentials from Web Browsers](https://attack.mitre.org/techniques/T1555/003/)
-- [MITRE ATT&CK — Steal Web Session Cookie](https://attack.mitre.org/techniques/T1539/)
-- [Microsoft — ASR rules reference](https://learn.microsoft.com/en-us/defender-endpoint/attack-surface-reduction-rules-reference)
-- [Microsoft — Sysmon configuration and event reference](https://learn.microsoft.com/en-us/windows/security/operating-system-security/sysmon/sysmon-configuration-files)
-- [abuse.ch / Spamhaus threat-intelligence API documentation](https://abusech-docs.spamhaus.com/api-reference)
+- [MITRE ATT&CK — Registry Run Keys / Startup Folder (T1547.001)](https://attack.mitre.org/techniques/T1547/001/)
+- [MITRE ATT&CK — Windows startup persistence detection strategy](https://attack.mitre.org/detectionstrategies/DET0365/)
+- [Microsoft — Run and RunOnce Registry Keys](https://learn.microsoft.com/windows/win32/setupapi/run-and-runonce-registry-keys)
+- [Microsoft — Configure startup applications in Windows](https://support.microsoft.com/en-us/windows/experience/startup-boot/configure-startup-applications-in-windows)
+- [pystray — system tray usage](https://pystray.readthedocs.io/en/latest/usage.html)
+- [Microsoft — dark window title bar guidance](https://learn.microsoft.com/en-us/windows/apps/desktop/modernize/ui/apply-windows-themes)
 
-Keep Microsoft Defender real-time protection enabled. Review detections before manually blocking applications or restoring files from quarantine.
+Keep Microsoft Defender real-time protection enabled as an additional layer. Review detections before manually blocking applications or restoring files from quarantine.
