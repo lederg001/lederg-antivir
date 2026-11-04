@@ -86,8 +86,8 @@ def should_auto_quarantine(result: ScanResult) -> bool:
         return True
     if result.score < 90 or path.suffix.casefold() not in {".ps1", ".bat", ".cmd", ".vbs", ".js"}:
         return False
-    normalized = str(path).casefold().replace("/", "\\\\")
-    writable = any(marker in normalized for marker in ("\\\\appdata\\\\", "\\\\temp\\\\", "\\\\downloads\\\\", "\\\\public\\\\"))
+    normalized = str(path).casefold().replace("/", "\\")
+    writable = any(marker in normalized for marker in ("\\appdata\\", "\\temp\\", "\\downloads\\", "\\public\\"))
     return writable and not _is_protected(path)
 
 
