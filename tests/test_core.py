@@ -121,3 +121,19 @@ def test_auto_quarantine_does_not_apply_to_low_confidence_or_executable_files(tm
     executable = ScanResult(tmp_path / "Downloads" / "suspicious.exe", "0" * 64, 100, ["score"])
     assert should_auto_quarantine(low) is False
     assert should_auto_quarantine(executable) is False
+
+
+def test_analyze_file_matches_external_sha256_ioc_and_allows_quarantine(tmp_path, monkeypatch):
+    from src.antivir import core
+
+    sample = tmp_path / "Downloads" / "renamed-file.exe"
+    sample.parent.mkdir()
+    sample.write_bytes(b"known malware hash")
+    monkeypatch.setattr(core, "lookup_hash", lambda digest: {"family": "TestStealer"})
+
+    result = analyze_file(sample)
+
+    assert result.ioc_match is True
+    assert result.score == 100
+    assert core.should_auto_quarantine(result) is True
+    assert any("SHA-256" in reason for reason in result.reasons)
