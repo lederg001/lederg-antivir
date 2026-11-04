@@ -13,7 +13,7 @@ from tkinter import filedialog, messagebox, ttk
 # Make the src-layout package importable from source and the PyInstaller executable.
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
-from antivir.core import ScanResult, analyze_file, is_exact_ioc_file, quarantine_file, restore_file
+from antivir.core import ScanResult, analyze_file, is_exact_ioc_file, quarantine_file, restore_file, should_auto_quarantine
 from antivir.defender import get_defender_status, start_defender_scan
 from antivir.network import (
     TRUSTED_APP_RULES, NetworkEvent, NetworkMonitor, block_process_outbound,
@@ -1322,11 +1322,11 @@ class App(tk.Tk):
                         count += 1
                         if result.score >= 80:
                             critical += 1
-                        if self.auto_protect_enabled and is_exact_ioc_file(path):
+                        if self.auto_protect_enabled and should_auto_quarantine(result):
                             try:
                                 item = quarantine_file(path, QUARANTINE)
                                 result.quarantined_path = item.path
-                                result.reasons.append("АВТОЗАЩИТА: точный IOC перемещён в карантин")
+                                result.reasons.append("АВТОЗАЩИТА: высокоуверенный скрипт / точный IOC перемещён в карантин")
                                 isolated += 1
                             except Exception as exc:
                                 result.reasons.append(f"Автоизоляция не выполнена: {exc}")
