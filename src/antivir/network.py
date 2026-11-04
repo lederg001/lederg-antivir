@@ -3,7 +3,6 @@ from __future__ import annotations
 import ctypes
 import hashlib
 import ipaddress
-import json
 import os
 import socket
 import subprocess
@@ -16,7 +15,7 @@ from typing import Callable
 
 import psutil
 
-from antivir.core import is_exact_ioc_file, quarantine_file
+from .core import is_exact_ioc_file, quarantine_file
 
 KNOWN_BAD_NAMES = {"svchost32.exe", "cloudsynchost.exe", "csyncwatch.exe"}
 KNOWN_BAD_PATHS = ("\\windowshelper\\", "\\cloudsyncdata\\", "\\cloudsyncwatcher\\")
@@ -394,10 +393,13 @@ class NetworkMonitor:
                 assessment.trusted_application,
             )
             if self.auto_block and event.auto_block_eligible:
-                event.action = (
-                    self._auto_contain(event) if self.auto_quarantine
-                    else block_process_outbound(Path(process_path))
-                )
+                try:
+                    event.action = (
+                        self._auto_contain(event) if self.auto_quarantine
+                        else block_process_outbound(Path(process_path))
+                    )
+                except Exception as exc:
+                    event.action = f"Автозащита не завершена: {exc}"
             current.append(event)
             self.callback(event)
         return current
