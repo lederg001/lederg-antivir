@@ -700,6 +700,177 @@ class App(tk.Tk):
         except Exception:
             pass
 
+    def _build_startup_page(self):
+        intro = tk.Frame(self.page_host, bg=PANEL, highlightthickness=1, highlightbackground=BORDER)
+        intro.pack(fill="x", pady=(0, 12))
+        tk.Label(intro, text="КОНТРОЛЬ ТОЧЕК ЗАПУСКА WINDOWS", bg=PANEL, fg=TEXT,
+                 font=("Segoe UI Semibold", 12)).pack(anchor="w", padx=16, pady=(13, 5))
+        tk.Label(
+            intro,
+            text="Проверяются Run / RunOnce, 32-битные Run-ключи и папки автозагрузки текущего и всех пользователей. "
+                 "Команды не запускаются. Оцениваются цифровые подписи, расположение файлов и подозрительные параметры PowerShell.",
+            bg=PANEL, fg=MUTED, wraplength=980, justify="left", font=("Segoe UI", 9),
+        ).pack(anchor="w", padx=16, pady=(0, 12))
+
+        panel = tk.Frame(self.page_host, bg=PANEL, highlightthickness=1, highlightbackground=BORDER)
+        panel.pack(fill="both", expand=True)
+        head = tk.Frame(panel, bg=PANEL)
+        head.pack(fill="x", padx=14, pady=(13, 8))
+        tk.Label(head, text="ЭЛЕМЕНТЫ АВТОЗАГРУЗКИ", bg=PANEL, fg=TEXT,
+                 font=("Segoe UI Semibold", 10)).pack(side="left")
+        self.startup_scan_button = self._button(head, "СКАНИРОВАТЬ", self.scan_startup, primary=True, compact=True)
+        self.startup_scan_button.pack(side="right")
+
+        tk.Label(
+            panel,
+            text="Критическое совпадение точного IOC выделяется отдельно. Неизвестные записи показываются для проверки, но не отключаются автоматически.",
+            bg=PANEL, fg=MUTED, wraplength=960, justify="left", font=("Segoe UI", 8),
+        ).pack(anchor="w", padx=14, pady=(0, 8))
+
+        columns = ("name", "source", "risk", "signature", "target", "details")
+        self.startup_tree = ttk.Treeview(panel, columns=columns, show="headings")
+        for key, title, width in [
+            ("name", "Имя", 145),
+            ("source", "Источник", 130),
+            ("risk", "Риск", 65),
+            ("signature", "Подпись", 105),
+            ("target", "Целевой файл", 380),
+            ("details", "Причина / оценка", 260),
+        ]:
+            self.startup_tree.heading(key, text=title)
+            self.startup_tree.column(key, width=width, anchor="w")
+        self.startup_tree.tag_configure("critical", foreground="#ff5b71")
+        self.startup_tree.tag_configure("high", foreground=AMBER)
+        self.startup_tree.tag_configure("medium", foreground="#f0d18b")
+        self.startup_tree.tag_configure("trusted", foreground=GREEN)
+        self.startup_tree.tag_configure("info", foreground="#c8d1df")
+        self.startup_tree.pack(fill="both", expand=True, padx=12, pady=(0, 10))
+        self.startup_rows = {}
+
+        actions = tk.Frame(panel, bg=PANEL)
+        actions.pack(fill="x", padx=12, pady=(0, 12))
+        self._button(actions, "Подробности", self.show_selected_startup_details, compact=True).pack(side="left")
+        self._button(actions, "Открыть расположение", self.open_selected_startup_location, compact=True).pack(side="left", padx=8)
+        tk.Label(actions, text="Просмотр безопасен: записи реестра и файлы не меняются.",
+                 bg=PANEL, fg=MUTED, font=("Segoe UI", 8)).pack(side="right")
+        self._render_startup_rows()
+
+    def _render_startup_rows(self):
+        if not hasattr(self, "startup_tree"):
+            return
+        try:
+            if not self.startup_tree.winfo_exists():
+                return
+        except tk.TclError:
+            return
+        for iid in self.startup_tree.get_children():
+            self.startup_tree.delete(iid)
+        self.startup_rows.clear()
+        for entry in self.startup_entries:
+            signature = (
+                f"Подпись: {entry.publisher}" if entry.signature_valid and entry.publisher
+                else "Нет подписи" if entry.target_exists and entry.target.lower().endswith(".exe")
+                else "Не проверена"
+            )
+            reason = "; ".join(entry.reasons)
+            tag = (
+                "critical" if entry.severity == "critical"
+                else "high" if entry.severity == "high"
+                else "medium" if entry.severity == "medium"
+                else "trusted" if entry.severity == "trusted"
+                else "info"
+            )
+            iid = self.startup_tree.insert(
+                "", "end",
+                values=(
+                    entry.name, entry.source, f"{entry.score}/100", signature,
+                    entry.target or "Цель ярлыка не раскрыта", reason,
+                ),
+                tags=(tag,),
+            )
+            self.startup_rows[iid] = entry
+
+    def scan_startup(self):
+        if hasattr(self, "startup_scan_button"):
+            try:
+                self.startup_scan_button.configure(state="disabled", text="СКАНИРОВАНИЕ…")
+            except tk.TclError:
+                pass
+        self.status.set("Анализирую точки автозагрузки Windows. Команды не запускаются.")
+        threading.Thread(target=self._startup_scan_worker, name="LEDERG-StartupScan", daemon=True).start()
+
+    def _startup_scan_worker(self):
+        try:
+            entries = scan_startup_entries()
+            error = None
+        except Exception as exc:
+            entries = []
+            error = str(exc)
+        try:
+            self.after(0, lambda values=entries, problem=error: self._finish_startup_scan(values, problem))
+        except RuntimeError:
+            pass
+
+    def _finish_startup_scan(self, entries: list[StartupEntry], error: str | None):
+        self.startup_entries = entries
+        self._render_startup_rows()
+        if hasattr(self, "startup_scan_button"):
+            try:
+                self.startup_scan_button.configure(state="normal", text="СКАНИРОВАТЬ")
+            except tk.TclError:
+                pass
+        if error:
+            self.status.set(f"Не удалось проверить автозагрузку: {error}")
+        elif not entries:
+            self.status.set("Элементы автозагрузки не найдены или текущая платформа не Windows.")
+        else:
+            critical = sum(1 for item in entries if item.severity == "critical")
+            high = sum(1 for item in entries if item.severity == "high")
+            self.status.set(
+                f"Автозагрузка проверена: {len(entries)} записей · критических: {critical} · высоких: {high}. "
+                "Ничего не отключалось."
+            )
+
+    def _selected_startup_entry(self) -> StartupEntry | None:
+        if not hasattr(self, "startup_tree"):
+            return None
+        selected = self.startup_tree.selection()
+        return self.startup_rows.get(selected[0]) if selected else None
+
+    def show_selected_startup_details(self):
+        entry = self._selected_startup_entry()
+        if not entry:
+            messagebox.showinfo(APP, "Выбери запись автозагрузки.")
+            return
+        messagebox.showinfo(
+            f"LEDERG · {entry.name}",
+            f"Источник: {entry.source}\n"
+            f"Оценка: {entry.score}/100 ({entry.severity})\n"
+            f"Файл: {entry.target or 'цель ярлыка не определена'}\n"
+            f"Издатель: {entry.publisher or 'не подтверждён'}\n"
+            f"Подпись действительна: {'да' if entry.signature_valid else 'нет / не проверена'}\n\n"
+            f"Команда:\n{entry.command}\n\n"
+            f"Причины:\n" + "\n".join(f"• {reason}" for reason in entry.reasons),
+        )
+
+    def open_selected_startup_location(self):
+        entry = self._selected_startup_entry()
+        if not entry or not entry.target:
+            messagebox.showinfo(APP, "Для этой записи не удалось определить файл.")
+            return
+        target = Path(entry.target)
+        folder = target.parent if target.suffix else target
+        if not folder.exists():
+            messagebox.showinfo(APP, f"Папка не найдена:\n{folder}")
+            return
+        try:
+            if os.name == "nt":
+                os.startfile(str(folder))
+            else:
+                webbrowser.open(folder.as_uri())
+        except Exception as exc:
+            messagebox.showerror(APP, f"Не удалось открыть папку: {exc}")
+
     def _build_trusted_page(self):
         viewport = tk.Frame(self.page_host, bg=BG)
         viewport.pack(fill="both", expand=True)
