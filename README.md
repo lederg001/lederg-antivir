@@ -122,7 +122,9 @@ GitHub Actions runs tests and packages the Windows x64 EXE on every push to `mai
 - High-confidence (90+) suspicious scripts in user-writable folders can be quarantined when auto-protection is explicitly enabled; known stealer filenames are flagged for review.
 - Safe defensive response only: no traffic flooding, false-data exfiltration, or interference with third-party infrastructure.
 
-The catalogue is curated threat context, not a claim to include every malware variant. New private, renamed and rapidly changing samples cannot all be enumerated by name; reliable coverage comes from behavior, verified hashes and maintained feeds. Live feed ingestion is still not implemented.
+The catalogue is curated threat context, not a claim to include every malware variant. New private, renamed and rapidly changing samples cannot all be enumerated by name; reliable coverage comes from behavior, verified hashes and maintained feeds.
+Validation: **65 tests passed** and the Windows x64 PyInstaller build completed successfully on GitHub Actions. The EXE build artifact was uploaded successfully. Interactive UI/tray behavior and Sysmon event availability still require a real run on the target Windows PC.
+ Live feed ingestion is still not implemented.
 
 ## v0.5.0 changes
 
