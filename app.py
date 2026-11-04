@@ -480,17 +480,32 @@ class App(tk.Tk):
             pass
 
     def _build_trusted_page(self):
-        intro = tk.Frame(self.page_host, bg=PANEL, highlightthickness=1, highlightbackground=BORDER)
+        viewport = tk.Frame(self.page_host, bg=BG)
+        viewport.pack(fill="both", expand=True)
+        canvas = tk.Canvas(viewport, bg=BG, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(viewport, orient="vertical", command=canvas.yview, style="Vertical.TScrollbar")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        content = tk.Frame(canvas, bg=BG)
+        window_id = canvas.create_window((0, 0), window=content, anchor="nw")
+        content.bind("<Configure>", lambda _event: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda event: canvas.itemconfigure(window_id, width=event.width))
+        canvas.bind_all("<MouseWheel>", lambda event: canvas.yview_scroll(int(-1 * (event.delta / 120)), "units"))
+
+        intro = tk.Frame(content, bg=PANEL, highlightthickness=1, highlightbackground=BORDER)
         intro.pack(fill="x", pady=(0, 12))
         tk.Label(intro, text="НЕ ДОВЕРЯЕМ ТОЛЬКО ИМЕНИ ФАЙЛА", bg=PANEL, fg=TEXT,
                  font=("Segoe UI Semibold", 12)).pack(anchor="w", padx=16, pady=(13, 5))
         tk.Label(intro, text="Opera.exe или Discord.exe считаются обычными только если подпись Windows действительна, издатель ожидаемый и путь совпадает с типовой установкой.",
                  bg=PANEL, fg=MUTED, wraplength=900, justify="left", font=("Segoe UI", 9)).pack(anchor="w", padx=16, pady=(0, 13))
-        panel = tk.Frame(self.page_host, bg=PANEL, highlightthickness=1, highlightbackground=BORDER)
+        panel = tk.Frame(content, bg=PANEL, highlightthickness=1, highlightbackground=BORDER)
         panel.pack(fill="x", pady=(0, 12))
+        tk.Label(panel, text="ПРОВЕРЯЕМЫЕ ПРИЛОЖЕНИЯ", bg=PANEL, fg=TEXT,
+                 font=("Segoe UI Semibold", 10)).pack(anchor="w", padx=16, pady=(12, 4))
         for name, rule in TRUSTED_APP_RULES.items():
             row = tk.Frame(panel, bg=PANEL)
-            row.pack(fill="x", padx=16, pady=8)
+            row.pack(fill="x", padx=16, pady=7)
             tk.Label(row, text=name, bg=PANEL, fg=TEXT,
                      font=("Segoe UI Semibold", 10), width=17, anchor="w").pack(side="left")
             tk.Label(row, text="Издатель: " + ", ".join(rule["publishers"]),
@@ -500,7 +515,7 @@ class App(tk.Tk):
                      justify="left").pack(anchor="w", padx=16, pady=(0, 5))
             tk.Frame(panel, bg=BORDER, height=1).pack(fill="x", padx=16, pady=(2, 0))
 
-        domains_panel = tk.Frame(self.page_host, bg=PANEL, highlightthickness=1, highlightbackground=BORDER)
+        domains_panel = tk.Frame(content, bg=PANEL, highlightthickness=1, highlightbackground=BORDER)
         domains_panel.pack(fill="x", pady=(0, 12))
         tk.Label(domains_panel, text="СПРАВОЧНИК ОБЫЧНЫХ СЕРВИСОВ И ДОМЕНОВ",
                  bg=PANEL, fg=TEXT, font=("Segoe UI Semibold", 10)).pack(anchor="w", padx=16, pady=(12, 6))
@@ -518,7 +533,7 @@ class App(tk.Tk):
             justify="left",
         ).pack(anchor="w", padx=16, pady=(7, 12))
 
-        warning = tk.Frame(self.page_host, bg="#1b1720", highlightthickness=1, highlightbackground="#5d2634")
+        warning = tk.Frame(content, bg="#1b1720", highlightthickness=1, highlightbackground="#5d2634")
         warning.pack(fill="x", pady=(0, 10))
         tk.Label(warning, text="ПОЧЕМУ НЕТ ГЛОБАЛЬНОГО СПИСКА «БЕЗОПАСНЫХ ДОМЕНОВ»",
                  bg="#1b1720", fg=AMBER, font=("Segoe UI Semibold", 9)).pack(anchor="w", padx=15, pady=(11, 5))
