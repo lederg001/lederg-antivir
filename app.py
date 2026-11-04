@@ -755,7 +755,9 @@ class App(tk.Tk):
         for feed in THREAT_FEEDS:
             text.insert("end", f"• {feed['name']} — {feed['type']}\n", "family")
             text.insert("end", f"  {feed['auth']} · {feed['url']}\n\n", "link")
-        text.insert("end", "\nВАЖНО: внешние feed API требуют регистрации / API-ключа. В этой версии ссылки и схема источников добавлены, но автоматическое получение их IOCs ещё не подключено.\n", "note")
+        text.insert("end", "\nОБНОВЛЕНИЕ IOC\n", "heading")
+        text.insert("end", "Нажми «ОБНОВИТЬ IOC» и введи бесплатный Auth-Key abuse.ch. LEDERG получает недавние SHA-256 из MalwareBazaar и домены/хэши ThreatFox, сохраняет только IOC-метаданные локально и сверяет SHA-256 файлов при сканировании. Ключ используется только в памяти на время запроса и не записывается. Вредоносные образцы не скачиваются.\n", "note")
+        text.insert("end", "Это не «все существующие стиллеры»: семейства и варианты постоянно появляются, а IOC имеют срок актуальности. Локальная база объединяет справочные семейства и проверяемые свежие индикаторы.\n", "note")
         text.tag_configure("heading", foreground=RED_HOVER, font=("Segoe UI Semibold", 11))
         text.tag_configure("family", foreground=TEXT, font=("Segoe UI Semibold", 9))
         text.tag_configure("link", foreground=BLUE)
