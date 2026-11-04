@@ -43,11 +43,12 @@ def analyze_file(path: Path) -> ScanResult:
     normalized = str(path).lower().replace("/", "\\")
     reasons: list[str] = []
     score = 0
-    if any(token in normalized for token in SUSPICIOUS_PATHS):
-        reasons.append("Файл расположен в известной подозрительной директории")
+    matched_path = next((token for token in SUSPICIOUS_PATHS if token in normalized), None)
+    if matched_path:
+        reasons.append(f"Подозрительный маркер пути: {matched_path.strip(chr(92))}")
         score += 55
     if path.name.lower() in SUSPICIOUS_NAMES:
-        reasons.append("Имя совпадает с известным индикатором подозрительного ПО")
+        reasons.append(f"Имя совпадает с индикатором: {path.name}")
         score += 60
     if path.suffix.lower() in {".exe", ".dll", ".scr", ".bat", ".cmd", ".ps1"}:
         if "appdata" in normalized or "temp" in normalized:
