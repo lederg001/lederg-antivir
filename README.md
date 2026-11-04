@@ -101,6 +101,17 @@ pyinstaller --noconfirm --clean --onefile --windowed --paths src --collect-all p
 
 GitHub Actions runs tests and packages the Windows x64 EXE on every push to `main`.
 
+## v0.5.0 changes
+
+- Correlated cryptominer detection using process identity, pool/Stratum command-line markers, sustained CPU samples and common pool ports.
+- Optional high-confidence miner containment when auto-protection is enabled: outbound Firewall rule plus PID/path-verified process termination; miner files are not silently deleted.
+- Static script checks for combined browser-profile access, decryption, data collection and outbound-transfer indicators.
+- Expanded 2026 infostealer/session-theft and mining-tool reference catalogue.
+- Exact LEDERG ANTIVIR autostart identity is marked trusted, preventing the application from flagging its own Run entry.
+- Developer contact and community links in the app sidebar.
+
+Validation: 44 tests passed and the Windows x64 PyInstaller build completed successfully on GitHub Actions before the final VBS/JS scan-scope addition. The release workflow re-runs tests and rebuilds the final executable.
+
 ## Selected references
 
 - [MITRE ATT&CK — Registry Run Keys / Startup Folder (T1547.001)](https://attack.mitre.org/techniques/T1547/001/)
