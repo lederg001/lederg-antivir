@@ -1068,9 +1068,9 @@ class App(tk.Tk):
             confirmed = messagebox.askyesno(
                 APP,
                 "Включить постоянную автозащиту?\n\n"
-                "Она вмешивается только при точном совпадении известного IOC: "
-                "блокирует исходящие подключения, пытается остановить процесс и изолировать файл. "
-                "Обычные неизвестные программы автоматически не удаляются."
+                "Она изолирует точные IOC и скрипты с высокой совокупной оценкой в пользовательских каталогах. "
+                "Майнеры блокируются только при совпадении имени/параметров, устойчивой нагрузки и признака mining-pool. "
+                "Неизвестные программы по одному слабому сигналу не удаляются."
                 + limitations
                 + "\n\nВключить запуск LEDERG вместе с Windows, чтобы защита восстановилась после перезагрузки?",
             )
@@ -1094,7 +1094,7 @@ class App(tk.Tk):
         self._save_settings()
         self._sync_auto_button()
         if enabled:
-            self.status.set("АВТОЗАЩИТА ВКЛ: точный IOC → блокировка сети → остановка процесса → карантин. Настройка сохранена.")
+            self.status.set("АВТОЗАЩИТА ВКЛ: точные IOC и высокоуверенные скрипты → карантин; майнеры → блокировка сети и остановка. Настройка сохранена.")
         else:
             self.status.set("Автозащита выключена. Состояние сохранено; сетевой монитор продолжает работать.")
 
@@ -1135,7 +1135,8 @@ class App(tk.Tk):
         self._update_stats_display()
         if event.score >= 80:
             self.hero_status.configure(text="ОБНАРУЖЕН КРИТИЧЕСКИЙ СИГНАЛ", fg=RED_HOVER) if hasattr(self, "hero_status") and self.hero_status.winfo_exists() else None
-            self.status.set(f"КРИТИЧЕСКИЙ СИГНАЛ: {event.process_name} → {event.remote_address}:{event.remote_port}")
+            destination = event.remote_address if event.protocol.startswith("SYSMON") else f"{event.remote_address}:{event.remote_port}"
+            self.status.set(f"КРИТИЧЕСКИЙ СИГНАЛ: {event.process_name} → {destination}")
         elif event.trusted_application:
             self.status.set(f"Доверенное приложение: {event.process_name}. Подпись и путь подтверждены.")
         if "карантин" in event.action.lower():
