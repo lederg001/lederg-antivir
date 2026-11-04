@@ -51,7 +51,7 @@ The common-domain catalogue is informational rather than a global allowlist. The
 
 Auto-protection defaults to **OFF**. When explicitly enabled, its preference persists and LEDERG can restore it after the next Windows sign-in when per-user autostart is active.
 
-Exact known stealer IOC files and locally refreshed SHA-256 matches can be stopped, blocked and SHA-256-verified into quarantine. High-confidence scripts in user-writable locations can also be quarantined when auto-protection is enabled. Cryptominer detection uses a separate correlation engine:
+Exact known path/name IOC processes can be stopped and outbound-blocked, then quarantined with SHA-256 verification. Locally refreshed SHA-256 matches are quarantined during a scan when auto-protection is enabled; they are not automatically terminated as running processes. High-confidence scripts in user-writable locations can also be quarantined when auto-protection is enabled. Cryptominer detection uses a separate correlation engine:
 - known miner executable names and renamed miner command-line patterns;
 - Stratum protocol, algorithm/wallet/pool arguments and known public pool hints;
 - sustained high per-process CPU in multiple monitor samples;
