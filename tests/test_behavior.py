@@ -73,3 +73,20 @@ def test_single_browser_path_reference_is_not_enough_to_flag_a_script():
 
     assert result.score < 35
     assert result.auto_block_eligible is False
+
+
+def test_expanded_infostealer_process_names_are_recognized_without_auto_killing():
+    for name in (
+        "sys01.exe", "snakekeylogger.exe", "cuttlefish.exe", "beavertail.exe",
+        "danabot.exe", "poisonx.exe", "katzstealer.exe", "salatstealer.exe",
+        "amatera.exe", "arechclient2.exe", "acreed.exe", "ficklestealer.exe",
+    ):
+        result = assess_process_behavior(
+            process_name=name,
+            process_path=rf"C:\\Users\\tester\\AppData\\Local\\Temp\\{name}",
+            command_line=name,
+            cpu_sustained=False,
+            network_ports=set(),
+        )
+        assert result.category == "stealer", name
+        assert result.auto_block_eligible is False, name
