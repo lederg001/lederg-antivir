@@ -28,7 +28,7 @@ from antivir.startup import (
     StartupEntry, build_autostart_command, is_run_at_logon_enabled,
     scan_startup_entries, set_run_at_logon,
 )
-from antivir.ui import PillButton
+from antivir.ui import PillButton, pop_event_batch
 
 APP = "LEDERG ANTIVIR"
 BASE = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "LEDERG ANTIVIR"
@@ -69,6 +69,9 @@ class App(tk.Tk):
         self.scan_results: list[ScanResult] = []
         self.startup_entries: list[StartupEntry] = []
         self.network_count = 0
+        self._network_event_buffer: list[NetworkEvent] = []
+        self._network_event_lock = threading.Lock()
+        self._network_flush_scheduled = False
         self.auto_protect_enabled = bool(self.settings.get("auto_protect", False))
         self.autostart_enabled = self._read_autostart_state()
         self.net_rows: dict[str, NetworkEvent] = {}
@@ -1117,12 +1120,38 @@ class App(tk.Tk):
             return 0
 
     def _on_network_event(self, event: NetworkEvent):
-        try:
-            self.after(0, lambda e=event: self._insert_network_event(e))
-        except RuntimeError:
-            pass
+        schedule = False
+        with self._network_event_lock:
+            if len(self._network_event_buffer) >= 1000:
+                del self._network_event_buffer[:100]
+            self._network_event_buffer.append(event)
+            if not self._network_flush_scheduled:
+                self._network_flush_scheduled = True
+                schedule = True
+        if schedule:
+            try:
+                self.after(80, self._flush_network_event_buffer)
+            except (RuntimeError, tk.TclError):
+                with self._network_event_lock:
+                    self._network_flush_scheduled = False
 
-    def _insert_network_event(self, event: NetworkEvent):
+    def _flush_network_event_buffer(self):
+        with self._network_event_lock:
+            batch = pop_event_batch(self._network_event_buffer, 200)
+            more = bool(self._network_event_buffer)
+            self._network_flush_scheduled = more
+        for event in batch:
+            self._insert_network_event(event, update_stats=False)
+        if batch:
+            self._update_stats_display()
+        if more:
+            try:
+                self.after(50, self._flush_network_event_buffer)
+            except tk.TclError:
+                with self._network_event_lock:
+                    self._network_flush_scheduled = False
+
+    def _insert_network_event(self, event: NetworkEvent, *, update_stats: bool = True):
         self.network_count += 1
         self.network_events.append(event)
         self.network_events = self.network_events[-300:]
@@ -1132,7 +1161,8 @@ class App(tk.Tk):
                     self._insert_network_row(event)
             except tk.TclError:
                 pass
-        self._update_stats_display()
+        if update_stats:
+            self._update_stats_display()
         if event.score >= 80:
             self.hero_status.configure(text="ОБНАРУЖЕН КРИТИЧЕСКИЙ СИГНАЛ", fg=RED_HOVER) if hasattr(self, "hero_status") and self.hero_status.winfo_exists() else None
             destination = event.remote_address if event.protocol.startswith("SYSMON") else f"{event.remote_address}:{event.remote_port}"
