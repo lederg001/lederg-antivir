@@ -1248,7 +1248,7 @@ class App(tk.Tk):
 
                     def inspect(path: Path):
                         nonlocal count, isolated, critical
-                        if path.suffix.lower() not in {".exe", ".dll", ".scr", ".bat", ".cmd", ".ps1"}:
+                        if path.suffix.lower() not in {".exe", ".dll", ".scr", ".bat", ".cmd", ".ps1", ".vbs", ".js"}:
                             return
                         path_key = str(path.resolve()).casefold()
                         if path_key in self._seen_scan_paths:
