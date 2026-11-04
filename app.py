@@ -11,6 +11,7 @@ from tkinter import filedialog, messagebox, ttk
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from antivir.core import analyze_file, quarantine_file, restore_file
+from antivir.defender import get_defender_status, start_defender_scan
 from antivir.network import (
     NetworkEvent, NetworkMonitor, block_process_outbound, is_admin,
     unblock_process_outbound,
@@ -52,6 +53,7 @@ class App(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self._close)
         self.monitor.start()
         self.after(900, self._refresh_status)
+        self.after(1600, self._refresh_defender_status_async)
         self.refresh_quarantine()
 
     def _build_styles(self):
@@ -80,6 +82,9 @@ class App(tk.Tk):
         self.live_label = tk.Label(right, text="● REAL-TIME MONITORING", fg=GREEN, bg=BG,
                                    font=("Segoe UI Semibold", 10))
         self.live_label.pack(anchor="e")
+        self.defender_label = tk.Label(right, text="Microsoft Defender: проверка статуса…", fg=MUTED, bg=BG,
+                                       font=("Segoe UI", 9))
+        self.defender_label.pack(anchor="e")
         tk.Label(right, text="Windows 10 / 11  •  x64  •  Local-first", fg=MUTED, bg=BG,
                  font=("Segoe UI", 9)).pack(anchor="e")
         tk.Frame(self, bg=RED, height=2).pack(fill="x", padx=24)
@@ -121,6 +126,7 @@ class App(tk.Tk):
         row = tk.Frame(self, bg=BG)
         row.pack(fill="x", padx=24, pady=(0, 12))
         self._button(row, "Быстрая проверка", self.quick_scan, True).pack(side="left", padx=(0, 7))
+        self._button(row, "Полная проверка Defender", self.full_defender_scan).pack(side="left", padx=4)
         self._button(row, "Проверить папку", self.scan_folder).pack(side="left", padx=4)
         self._button(row, "Карантин выбранного", self.quarantine_selected).pack(side="left", padx=4)
         self._button(row, "Блокировать процесс", self.block_selected).pack(side="left", padx=4)
@@ -272,6 +278,11 @@ class App(tk.Tk):
         self.net_tree.yview_moveto(1)
 
     def quick_scan(self):
+        try:
+            pid = start_defender_scan("QuickScan")
+            self.status.set(f"Microsoft Defender: быстрая проверка запущена (PID {pid}).")
+        except Exception as exc:
+            self.status.set(f"Defender quick scan недоступен: {exc}")
         candidates = [
             Path.home() / "Desktop",
             Path.home() / "Downloads",
@@ -283,7 +294,41 @@ class App(tk.Tk):
     def scan_folder(self):
         folder = filedialog.askdirectory(title="Выберите папку для проверки")
         if folder:
-            self._scan_roots([Path(folder)])
+            selected = Path(folder)
+            self._scan_roots([selected])
+            if messagebox.askyesno(APP, "Дополнительно проверить эту папку движком Microsoft Defender?"):
+                try:
+                    pid = start_defender_scan("CustomScan", selected)
+                    self.status.set(f"Microsoft Defender: выборочная проверка запущена (PID {pid}).")
+                except Exception as exc:
+                    messagebox.showerror(APP, f"Не удалось запустить Defender: {exc}")
+
+    def full_defender_scan(self):
+        if not messagebox.askyesno(APP, "Запустить полную проверку Microsoft Defender? Она может занять продолжительное время и нагрузить компьютер."):
+            return
+        try:
+            pid = start_defender_scan("FullScan")
+            self.status.set(f"Microsoft Defender: полная проверка запущена (PID {pid}).")
+        except Exception as exc:
+            messagebox.showerror(APP, f"Не удалось запустить Defender: {exc}")
+
+    def _refresh_defender_status_async(self):
+        if not self.winfo_exists():
+            return
+        def worker():
+            try:
+                status = get_defender_status()
+                label = f"Microsoft Defender: {'ON' if status.antivirus_enabled else 'OFF'} · real-time {'ON' if status.realtime_enabled else 'OFF'} · {status.running_mode}"
+                color = GREEN if status.antivirus_enabled and status.realtime_enabled else AMBER
+            except Exception as exc:
+                label = f"Microsoft Defender: статус недоступен ({exc})"
+                color = AMBER
+            try:
+                self.after(0, lambda: self.defender_label.configure(text=label, fg=color))
+            except RuntimeError:
+                pass
+        threading.Thread(target=worker, name="LEDERG-DefenderStatus", daemon=True).start()
+        self.after(60000, self._refresh_defender_status_async)
 
     def _scan_roots(self, roots):
         def worker():
