@@ -68,3 +68,34 @@ def test_sysmon_event_without_suspicious_indicators_is_ignored():
 
     assert result.category == "none"
     assert result.score == 0
+
+
+def test_sysmon_dns_query_for_known_pool_is_a_behavior_signal():
+    event = SysmonEvent(
+        event_id=22,
+        record_id=4,
+        timestamp="2026-11-04T10:00:00Z",
+        data={"Image": r"C:\\Users\\Public\\service.exe", "QueryName": "pool.supportxmr.com"},
+    )
+
+    result = assess_sysmon_event(event)
+
+    assert result.category == "network"
+    assert result.score >= 55
+    assert result.auto_block_eligible is False
+
+
+def test_sysmon_registry_run_key_change_is_persistence_signal():
+    event = SysmonEvent(
+        event_id=13,
+        record_id=5,
+        timestamp="2026-11-04T10:00:00Z",
+        data={"Image": r"C:\\Users\\Public\\updater.exe",
+              "TargetObject": r"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\Updater"},
+    )
+
+    result = assess_sysmon_event(event)
+
+    assert result.category == "persistence"
+    assert result.score >= 55
+    assert result.auto_block_eligible is False
