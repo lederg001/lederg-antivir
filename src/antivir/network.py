@@ -4,6 +4,7 @@ import ctypes
 import hashlib
 import ipaddress
 import os
+import socket
 import subprocess
 import threading
 import time
@@ -91,6 +92,11 @@ def _windows_root() -> Path:
     return Path(os.environ.get("SystemRoot", r"C:\Windows")).resolve()
 
 
+def _firewall_rule_name(executable: Path) -> str:
+    rule_id = hashlib.sha256(str(executable.resolve()).casefold().encode("utf-8")).hexdigest()[:12]
+    return f"LEDERG ANTIVIR Outbound {rule_id}"
+
+
 def build_firewall_block_args(executable: Path) -> list[str]:
     executable = Path(executable).expanduser().resolve(strict=True)
     if not executable.is_file() or executable.suffix.lower() != ".exe":
@@ -101,8 +107,7 @@ def build_firewall_block_args(executable: Path) -> list[str]:
     except ValueError as exc:
         if str(exc) == "Blocking Windows system binaries is prohibited":
             raise
-    rule_id = hashlib.sha256(str(executable).casefold().encode("utf-8")).hexdigest()[:12]
-    name = f"LEDERG ANTIVIR Outbound {rule_id}"
+    name = _firewall_rule_name(executable)
     return [
         "advfirewall", "firewall", "add", "rule",
         f'name="{name}"', "dir=out", "action=block", f'program="{executable}"',
@@ -111,9 +116,10 @@ def build_firewall_block_args(executable: Path) -> list[str]:
 
 
 def build_firewall_unblock_args(executable: Path) -> list[str]:
+    # Do not require the executable to still exist; the firewall rule may outlive quarantine/removal.
     executable = Path(executable).expanduser().resolve()
-    rule_id = hashlib.sha256(str(executable).casefold().encode("utf-8")).hexdigest()[:12]
-    return ["advfirewall", "firewall", "delete", "rule", f"name=LEDERG ANTIVIR Outbound {rule_id}"]
+    name = _firewall_rule_name(executable)
+    return ["advfirewall", "firewall", "delete", "rule", f'name="{name}"']
 
 
 def is_admin() -> bool:
@@ -192,8 +198,14 @@ class NetworkMonitor:
         now = time.monotonic()
         current: list[NetworkEvent] = []
         connections = psutil.net_connections(kind="inet")
+        self._seen = {key: timestamp for key, timestamp in self._seen.items() if now - timestamp < 90}
         for conn in connections:
-            if not conn.pid or not conn.raddr or conn.status != psutil.CONN_ESTABLISHED:
+            is_udp = conn.type == socket.SOCK_DGRAM
+            if not conn.pid or not conn.raddr:
+                continue
+            # UDP sockets generally have no TCP-like ESTABLISHED state; connected UDP
+            # endpoints are included when the OS reports a remote address.
+            if not is_udp and conn.status != psutil.CONN_ESTABLISHED:
                 continue
             remote_ip = getattr(conn.raddr, "ip", None) or conn.raddr[0]
             remote_port = getattr(conn.raddr, "port", None) or conn.raddr[1]
@@ -210,12 +222,11 @@ class NetworkMonitor:
                 continue
 
             key = (conn.pid, str(remote_ip), int(remote_port), str(conn.type))
-            self._seen = {k: t for k, t in self._seen.items() if now - t < 90}
             if key in self._seen:
                 continue
             self._seen[key] = now
             assessment = assess_connection(process_name, process_path, str(remote_ip), int(remote_port), conn.status)
-            protocol = "TCP" if conn.type == getattr(__import__("socket"), "SOCK_STREAM") else "UDP"
+            protocol = "UDP" if is_udp else "TCP"
             event = NetworkEvent(
                 datetime.now(timezone.utc).astimezone().strftime("%H:%M:%S"),
                 conn.pid, process_name, process_path, str(remote_ip), int(remote_port),
