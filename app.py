@@ -469,8 +469,8 @@ class App(tk.Tk):
         self.hero_status = tk.Label(left, text="СИСТЕМА ГОТОВА К ПРОВЕРКЕ", bg=PANEL, fg=TEXT,
                                     font=("Segoe UI Black", 22))
         self.hero_status.pack(anchor="w", pady=(9, 4))
-        tk.Label(left, text="Одна кнопка проверит важные пользовательские папки и запустит\n"
-                            "быструю проверку Microsoft Defender. Критические точные IOC\n"
+        tk.Label(left, text="Одна кнопка проверит файлы, сетевые процессы и точки автозагрузки\n"
+                            "собственным движком LEDERG. При включённой автозащите точные IOC\n"
                             "можно автоматически остановить и отправить в карантин.",
                  bg=PANEL, fg=MUTED, justify="left", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 16))
         actions = tk.Frame(left, bg=PANEL)
@@ -548,7 +548,7 @@ class App(tk.Tk):
         quick.grid(row=0, column=1, sticky="nsew")
         tk.Label(quick, text="БЫСТРЫЕ ДЕЙСТВИЯ", bg=PANEL, fg=TEXT,
                  font=("Segoe UI Semibold", 10)).pack(anchor="w", padx=16, pady=(14, 12))
-        self._button(quick, "Полная проверка Microsoft Defender", self.full_defender_scan).pack(fill="x", padx=14, pady=5)
+        self._button(quick, "Дополнительная проверка Defender", self.full_defender_scan).pack(fill="x", padx=14, pady=5)
         self._button(quick, "Проверить выбранную папку", self.scan_folder).pack(fill="x", padx=14, pady=5)
         self._button(quick, "Открыть сетевой монитор", lambda: self.show_page("network")).pack(fill="x", padx=14, pady=5)
         self._button(quick, "Проверить автозагрузку", lambda: (self.show_page("startup"), self.scan_startup())).pack(fill="x", padx=14, pady=5)
