@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .behavior import assess_stealer_script, is_miner_artifact_name
+
 @dataclass
 class ScanResult:
     path: Path
@@ -55,6 +57,22 @@ def analyze_file(path: Path) -> ScanResult:
         if "appdata" in normalized or "temp" in normalized:
             reasons.append("Исполняемый файл в пользовательской временной области")
             score += 15
+
+    if path.suffix.lower() == ".exe" and is_miner_artifact_name(path.name):
+        reasons.append("Имя файла совпадает с распространённым криптомайнером; нужна проверка процесса и сетевой активности")
+        score = max(score, 55)
+
+    if path.suffix.lower() in {".ps1", ".bat", ".cmd", ".vbs", ".js"}:
+        try:
+            with path.open("r", encoding="utf-8", errors="ignore") as stream:
+                content = stream.read(1_500_000)
+            behavior = assess_stealer_script(content)
+            if behavior.score >= 35:
+                reasons.extend(behavior.reasons)
+                score = max(score, behavior.score)
+        except OSError:
+            pass
+
     return ScanResult(path, _sha256(path), min(score, 100), reasons)
 
 
