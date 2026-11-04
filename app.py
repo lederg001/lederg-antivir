@@ -208,6 +208,7 @@ class App(tk.Tk):
                  padx=14, font=("Segoe UI", 9)).pack(fill="both", expand=True)
 
     def show_page(self, page: str):
+        self.unbind_all("<MouseWheel>")
         for child in self.page_host.winfo_children():
             child.destroy()
         for key, button in self.nav_buttons.items():
