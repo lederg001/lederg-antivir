@@ -159,7 +159,7 @@ class PillButton(tk.Canvas):
     def _on_press(self, event):
         if self._state == "normal":
             self._pressed = True
-            self.configure(background=self._hover)
+            self._animate_to(self._hover)
 
     def _on_release(self, event):
         was_pressed = self._pressed
