@@ -14,12 +14,12 @@ APP_RUN_VALUE = "LEDERG ANTIVIR"
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 STARTUP_EXTENSIONS = {".exe", ".com", ".bat", ".cmd", ".ps1", ".vbs", ".js", ".scr", ".lnk"}
 WRITABLE_MARKERS = (
-    r"\appdata\local\temp\\",
-    r"\appdata\roaming\",
-    r"\appdata\local\",
-    r"\temp\\",
-    r"\downloads\\",
-    r"\public\\",
+    "\\appdata\\local\\temp\\",
+    "\\appdata\\roaming\\",
+    "\\appdata\\local\\",
+    "\\temp\\",
+    "\\downloads\\",
+    "\\public\\",
 )
 SUSPICIOUS_ARGUMENTS = (
     "-encodedcommand",
