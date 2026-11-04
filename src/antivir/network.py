@@ -49,6 +49,38 @@ TRUSTED_APP_RULES = {
         "paths": ("\\appdata\\local\\bravesoftware\\brave-browser\\application\\", "\\program files\\bravesoftware\\brave-browser\\application\\"),
         "publishers": ("brave software",),
     },
+    "steam.exe": {
+        "paths": ("\\program files (x86)\\steam\\", "\\program files\\steam\\"),
+        "publishers": ("valve corp",),
+    },
+    "spotify.exe": {
+        "paths": ("\\appdata\\roaming\\spotify\\", "\\program files\\spotify\\"),
+        "publishers": ("spotify ab",),
+    },
+    "telegram.exe": {
+        "paths": ("\\appdata\\roaming\\telegram desktop\\", "\\program files\\telegram desktop\\"),
+        "publishers": ("telegram",),
+    },
+    "slack.exe": {
+        "paths": ("\\appdata\\local\\slack\\app-", "\\program files\\slack\\"),
+        "publishers": ("slack technologies", "salesforce"),
+    },
+    "zoom.exe": {
+        "paths": ("\\appdata\\roaming\\zoom\\bin\\", "\\program files\\zoom\\bin\\"),
+        "publishers": ("zoom video communications",),
+    },
+    "signal.exe": {
+        "paths": ("\\appdata\\local\\programs\\signal-desktop\\", "\\program files\\signal\\"),
+        "publishers": ("signal messenger",),
+    },
+    "onedrive.exe": {
+        "paths": ("\\appdata\\local\\microsoft\\onedrive\\", "\\program files\\microsoft onedrive\\"),
+        "publishers": ("microsoft corporation",),
+    },
+    "dropbox.exe": {
+        "paths": ("\\program files\\dropbox\\client\\", "\\appdata\\local\\dropbox\\client\\"),
+        "publishers": ("dropbox, inc", "dropbox inc"),
+    },
 }
 
 _signature_cache: dict[str, tuple[float, int, bool, str | None]] = {}
