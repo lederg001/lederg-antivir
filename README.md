@@ -2,13 +2,14 @@
 
 **Windows 10/11 x64 endpoint-defense prototype** with a custom black/red window frame, system tray, one-click local checks, startup-persistence inspection, signed-application recognition and hash-verified quarantine.
 
-[Download LEDERG ANTIVIR v0.5.0](https://github.com/lederg001/lederg-antivir/releases/tag/v0.5.0) — latest Windows x64 build.
+[Download LEDERG ANTIVIR v0.6.0](https://github.com/lederg001/lederg-antivir/releases/tag/v0.6.0) — latest Windows x64 build.
 
 > LEDERG ANTIVIR is an independent defensive toolset and endpoint-monitoring prototype, not a certified replacement for a full antivirus engine or Windows kernel file-system minifilter.
 
 ## User interface and lifecycle
 
-- Custom black LEDERG title bar with minimize-to-tray, maximize/restore and hide controls.
+- Custom black LEDERG title bar, animated rounded pill buttons, keyboard focus and hover feedback.
+- Page views are built once and reused instead of destroying/recreating controls on every tab switch, preventing stale widget references and reducing UI churn.
 - System tray menu: show window, quick scan, startup scan, toggle auto-protection and fully exit.
 - Closing the window hides it in the tray; use **Полностью выйти** in the tray menu to stop monitoring and exit.
 - Per-user Windows logon startup is optional. When enabled, LEDERG starts hidden in the tray after sign-in.
@@ -19,6 +20,8 @@
 ## One-click local inspection
 
 The main **ПРОВЕРИТЬ СИСТЕМУ** action independently reviews EXE/DLL/SCR/BAT/CMD/PS1/VBS/JS files in common user locations (Desktop, Downloads, Temp, AppData and Startup) and scans startup persistence entries. Selected script types are checked for correlated browser-store access, decryption, collection and outbound-transfer markers.
+
+High-confidence script detections (score 90+) in user-writable folders may be quarantined automatically only when auto-protection is enabled. Known infostealer executable names are flagged for review; a filename alone never triggers automatic termination.
 
 Microsoft Defender status and an optional manual full scan remain available as supplementary Windows features; they are not used as the LEDERG local scanner's detection engine.
 
@@ -64,7 +67,7 @@ LEDERG provides local containment, evidence review and process-specific outbound
 
 ## Threat-intelligence scope
 
-The reference catalogue tracks Vidar, LummaC2, Rhadamanthys, StealC, RedLine, Raccoon Stealer, MetaStealer, RisePro, Meduza, Acreed, Warden, Remus, ACR Stealer, Odyssey Stealer, ArechClient2, CallbackBeaver, Tenzor, XLoader/Formbook, Agent Tesla, StrelaStealer and other families. Sources include current 2026 reporting from CIS/MS-ISAC, Barracuda, Recorded Future, Red Canary and community intelligence. The catalogue also lists common mining tools such as XMRig, CPUMiner, T-Rex, PhoenixMiner, NBMiner, lolMiner, GMiner, SRBMiner, TeamRedMiner and NanoMiner. Many mining tools are legitimate software, not malware by themselves.
+The curated reference catalogue currently contains 40 family/panel entries, including Vidar, LummaC2, Rhadamanthys, StealC, RedLine, Raccoon, MetaStealer, RisePro, Meduza, SalatStealer, Amatera, Fickle, GhostSpy, XLoader/Formbook, Agent Tesla, StrelaStealer, Remus, ACR Stealer, Odyssey, ArechClient2, CallbackBeaver, Tenzor, Cuttlefish, Beavertail, DanaBot, Ailurophile, PoisonX, Katz, Sys01, Snake Keylogger, WorldWind, Atomic Stealer, Poseidon and MacSync. Sources include Microsoft, Recorded Future, Red Canary, Flare and CIS/MS-ISAC 2025–2026 reporting. The catalogue also lists common mining tools such as XMRig, CPUMiner, T-Rex, PhoenixMiner, NBMiner, lolMiner, GMiner, SRBMiner, TeamRedMiner and NanoMiner. Many mining tools are legitimate software, not malware by themselves.
 
 The app tracks ATT&CK T1539 (Steal Web Session Cookie), T1550.004 (Web Session Cookie), T1555.003 (Credentials from Web Browsers), T1185 (Browser Session Hijacking), T1496 and T1496.001 (Resource/Compute Hijacking). Contextual family entries are not individual malware signatures. References are included for MalwareBazaar, ThreatFox and URLhaus; live IOC ingestion from these feeds is not yet implemented.
 
@@ -72,9 +75,15 @@ The app tracks ATT&CK T1539 (Steal Web Session Cookie), T1550.004 (Web Session C
 
 ## Network and behavior-monitoring scope
 
-The monitor polls established TCP connections and connected UDP sockets (roughly every 2.5 seconds) and records process, PID, executable path where available, remote IP and port. It samples per-process CPU and correlates process names, command-line mining flags and pool ports. Static script analysis looks for combinations of browser-profile paths, decryption/collection and network-transfer markers.
+The connection metadata monitor polls established TCP connections and connected UDP sockets roughly every 3 seconds. It records process, PID, executable path where available, remote IP and port. A separate process-behavior pass runs roughly every 6 seconds; it samples CPU for processes and reads command lines only for likely candidates, reducing repeated process metadata work.
 
-It does not read browser cookies or saved passwords, inspect browser memory, decrypt HTTPS, sniff packet payloads or prove that data was exfiltrated. It is not an EDR kernel sensor: short-lived connections and attacks that leave no observable command-line/file artefacts can be missed. Optional Sysmon/Defender telemetry remains useful as another layer.
+### Optional Sysmon event telemetry
+
+When Sysmon is already installed and its Operational channel is readable, LEDERG can additionally ingest recent Event IDs 1 (process creation), 3 (network connection), 10 (process access), 11 (file creation), 13 (registry value set) and 22 (DNS query). The reader is read-only: it does not install Sysmon, alter its configuration or change Windows audit policy. It highlights suspicious access to LSASS/browser processes, autorun registry changes, suspicious command lines, and DNS/network indicators associated with mining pools. These events are review signals and do not independently trigger process termination.
+
+Sysmon reference and setup documentation: [Microsoft Sysmon overview](https://learn.microsoft.com/en-us/windows/security/operating-system-security/sysmon/overview).
+
+**Traffic visibility limit:** this is not a packet sniffer or full WFP/NDIS sensor. LEDERG sees socket metadata and configured Windows event telemetry; it does not inspect encrypted HTTPS payloads, read cookies/passwords, or prove that data was exfiltrated. Full packet capture would require a separate low-level driver/sensor and can conflict with VPN, WARP, Zapret or other network filters.
 
 Manual process blocking creates an outbound Windows Firewall rule for all outbound connections from that executable path, not just one remote IP/port.
 
@@ -100,6 +109,18 @@ pyinstaller --noconfirm --clean --onefile --windowed --paths src --collect-all p
 ```
 
 GitHub Actions runs tests and packages the Windows x64 EXE on every push to `main`.
+
+## v0.6.0 changes
+
+- Full interface refresh with animated rounded pill buttons and persistent page views; tab switches no longer destroy and recreate every control.
+- Search field for the threat catalogue.
+- Optional read-only Sysmon ingestion for process creation, network connections, process access, startup-file creation, registry autoruns and DNS queries.
+- Reduced monitoring overhead: network polling is separated from process behavior sampling, and command lines are read only for candidate processes.
+- Expanded the curated threat catalogue to 40 family/panel entries, including 2025–2026 reporting on Cuttlefish, Beavertail, DanaBot, Ailurophile, PoisonX, Katz, Sys01 and WorldWind.
+- High-confidence (90+) suspicious scripts in user-writable folders can be quarantined when auto-protection is explicitly enabled; known stealer filenames are flagged for review.
+- Safe defensive response only: no traffic flooding, false-data exfiltration, or interference with third-party infrastructure.
+
+The catalogue is curated threat context, not a claim to include every malware variant. New private, renamed and rapidly changing samples cannot all be enumerated by name; reliable coverage comes from behavior, verified hashes and maintained feeds. Live feed ingestion is still not implemented.
 
 ## v0.5.0 changes
 
