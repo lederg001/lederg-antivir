@@ -79,7 +79,7 @@ def assess_stealer_script(content: str) -> BehaviorAssessment:
     score = 0
     reasons: list[str] = []
     if browser:
-        score += 35
+        score += 20
         reasons.append("Обнаружены обращения к хранилищам браузера, cookies или профилям")
     if decryption:
         score += 25
