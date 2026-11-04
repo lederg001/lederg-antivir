@@ -8,7 +8,7 @@ def test_known_suspicious_artifact_making_public_connection_is_critical():
     result = assess_connection(
         process_name="svchost32.exe",
         process_path=r"C:\Users\tester\AppData\Roaming\WindowsHelper\svchost32.exe",
-        remote_address="203.0.113.10",
+        remote_address="1.1.1.1",
         remote_port=443,
         status="ESTABLISHED",
     )
