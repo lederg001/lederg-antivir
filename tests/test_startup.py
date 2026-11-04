@@ -99,3 +99,21 @@ def test_autostart_command_supports_python_source_launch():
         script=r"C:\LEDERG\app.py",
     )
     assert command == r'"C:\Python312\pythonw.exe" "C:\LEDERG\app.py" --background'
+
+
+
+def test_own_lederg_autostart_entry_is_protected_from_self_detection():
+    result = assess_startup_entry(
+        name="LEDERG ANTIVIR",
+        source="HKCU Run",
+        command=r'"C:\Users\tester\AppData\Local\LEDERG\LEDERG-ANTIVIR.exe" --background',
+        target=r"C:\Users\tester\AppData\Local\LEDERG\LEDERG-ANTIVIR.exe",
+        target_exists=True,
+        signature_valid=False,
+        own_application=True,
+    )
+
+    assert result.score == 0
+    assert result.severity == "trusted"
+    assert result.auto_quarantine_eligible is False
+    assert any("собственное приложение" in reason.lower() for reason in result.reasons)
