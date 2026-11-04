@@ -53,3 +53,15 @@ def test_quarantine_refuses_windows_and_program_files_paths(tmp_path):
         assert "protected" in str(exc).lower()
     else:
         raise AssertionError("protected path must be refused")
+
+
+def test_exact_high_confidence_ioc_requires_both_known_name_and_known_path():
+    from src.antivir.core import is_exact_ioc_file
+
+    exact = Path(r"C:\Users\tester\AppData\Roaming\WindowsHelper\svchost32.exe")
+    path_only = Path(r"C:\Users\tester\AppData\Roaming\WindowsHelper\ordinary.exe")
+    name_only = Path(r"C:\Users\tester\Downloads\svchost32.exe")
+
+    assert is_exact_ioc_file(exact) is True
+    assert is_exact_ioc_file(path_only) is False
+    assert is_exact_ioc_file(name_only) is False
