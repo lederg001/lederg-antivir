@@ -91,7 +91,7 @@ def test_sysmon_registry_run_key_change_is_persistence_signal():
         record_id=5,
         timestamp="2026-11-04T10:00:00Z",
         data={"Image": r"C:\\Users\\Public\\updater.exe",
-              "TargetObject": r"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\Updater"},
+              "TargetObject": r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run\Updater"},
     )
 
     result = assess_sysmon_event(event)
