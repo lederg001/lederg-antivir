@@ -117,8 +117,6 @@ class PillButton(tk.Canvas):
         anchor = kwargs.pop("anchor", None)
         if background is not None:
             self._normal = background
-            if not self._hovered:
-                self._current = background
         if foreground is not None:
             self._foreground = foreground
         if hover is not None:
@@ -133,7 +131,9 @@ class PillButton(tk.Canvas):
             self._font = tkfont.Font(font=font)
         if anchor is not None:
             self._anchor = anchor
-        if background is not None or foreground is not None or hover is not None or text is not None or font is not None or state is not None or anchor is not None:
+        if background is not None or hover is not None:
+            self._animate_to(self._hover if self._hovered else self._normal)
+        elif foreground is not None or text is not None or font is not None or state is not None or anchor is not None:
             self._draw()
         if kwargs:
             return super().configure(**kwargs)
