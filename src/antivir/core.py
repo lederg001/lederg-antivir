@@ -56,6 +56,18 @@ def analyze_file(path: Path) -> ScanResult:
             score += 15
     return ScanResult(path, _sha256(path), min(score, 100), reasons)
 
+
+def is_exact_ioc_file(path: Path | str) -> bool:
+    """Return True only for an exact known filename in a known malicious directory."""
+    value = str(path).lower().replace("/", "\\")
+    filename = value.rsplit("\\", 1)[-1]
+    return (
+        filename in SUSPICIOUS_NAMES
+        and filename.endswith(".exe")
+        and any(marker in value for marker in SUSPICIOUS_PATHS)
+    )
+
+
 def _is_protected(path: Path) -> bool:
     resolved = path.resolve()
     for root in PROTECTED_ROOTS:
