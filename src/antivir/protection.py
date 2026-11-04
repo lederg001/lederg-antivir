@@ -5,7 +5,7 @@ import os
 import subprocess
 from dataclasses import dataclass
 
-from antivir.defender import get_defender_status
+from .defender import get_defender_status
 
 
 @dataclass
