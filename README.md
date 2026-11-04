@@ -13,13 +13,14 @@
 - Manual process-specific outbound block/unblock using Windows Firewall; never disables WARP, Zapret, WinDivert or Windows Firewall services, and refuses to create/remove firewall rules for the WARP/Zapret executable names.
 - File/folder scans for EXE/DLL/SCR/BAT/CMD/PS1, SHA-256 and visible reasons.
 - Quarantine moves files to a non-executable extension, records original path and SHA-256, verifies integrity and supports restore.
+- Microsoft Defender integration: displays Antivirus / real-time protection status and starts user-confirmed Quick, Full or Custom scans without changing Defender preferences.
 - Tracked families from public reporting: Vidar, LummaC2, Rhadamanthys, StealC, RedLine, Raccoon Stealer, MetaStealer, Acreed, Warden Stealer and Remus.
 
 ## Network monitoring scope
 
 The monitor inspects **connection metadata**, not packet payloads. It does not decrypt HTTPS, read passwords/cookies/tokens, or capture message contents. It reports newly observed established external connections approximately every 2.5 seconds. This is not proof that data was exfiltrated; encrypted traffic can be legitimate, and malware can use trusted processes or another host process.
 
-The executable requests Windows administrator elevation so the OS exposes broader process/network telemetry and Firewall containment can work. Auto-containment remains OFF until explicitly enabled in the UI. It only blocks the exact executable path when both its old IOC name and suspicious directory match and it has an established public-IP connection. Other findings are alerts for review.
+Microsoft Defender status and on-demand scan integration uses the built-in PowerShell Defender module; LEDERG ANTIVIR does not disable Defender or alter its settings. Quick, full and custom scans are explicit user actions. The executable requests Windows administrator elevation so the OS exposes broader process/network telemetry and Firewall containment can work. Auto-containment remains OFF until explicitly enabled in the UI. It only blocks the exact executable path when both its old IOC name and suspicious directory match and it has an established public-IP connection. Other findings are alerts for review.
 
 ## Run from source
 
