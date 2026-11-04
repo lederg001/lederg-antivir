@@ -27,11 +27,14 @@ def parse_sysmon_events(xml_text: str) -> list[SysmonEvent]:
     source = re.sub(r"^<\?xml[^>]*\?>", "", source, flags=re.IGNORECASE).strip()
     if not source.startswith("<"):
         return []
-    if _local_name(ET.fromstring(source).tag) == "Event":
+    try:
         root = ET.fromstring(source)
+    except ET.ParseError:
+        # Some wevtutil versions return adjacent Event documents without a wrapper.
+        root = ET.fromstring(f"<Events>{source}</Events>")
+    if _local_name(root.tag) == "Event":
         nodes = [root]
     else:
-        root = ET.fromstring(source)
         nodes = [node for node in root.iter() if _local_name(node.tag) == "Event"]
 
     parsed: list[SysmonEvent] = []
@@ -123,10 +126,10 @@ def assess_sysmon_event(event: SysmonEvent):
     elif event.event_id == 13:
         target = data.get("targetobject", "").casefold()
         autorun_markers = (
-            "\\\\currentversion\\\\run",
-            "\\\\currentversion\\\\runonce",
-            "\\\\image file execution options",
-            "\\\\services\\\\",
+            "\\currentversion\\run",
+            "\\currentversion\\runonce",
+            "\\image file execution options",
+            "\\services\\\",
         )
         if any(marker in target for marker in autorun_markers):
             category, score = "persistence", 55
