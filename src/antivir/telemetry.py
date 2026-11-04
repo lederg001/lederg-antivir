@@ -115,8 +115,13 @@ def assess_sysmon_event(event: SysmonEvent):
     elif event.event_id == 22:
         image = data.get("image", "")
         query_name = data.get("queryname", "").casefold()
+        from .ioc_feeds import lookup_domain
+        feed_match = lookup_domain(query_name)
         pool_hints = ("supportxmr", "moneroocean", "nanopool", "2miners", "hashvault", "herominers", "f2pool")
-        if any(hint in query_name for hint in pool_hints):
+        if feed_match:
+            category, score = "network", 100
+            reasons.append(f"Sysmon Event 22: DNS-домен совпадает с ThreatFox IOC ({feed_match.get('family', 'Unknown')})")
+        elif any(hint in query_name for hint in pool_hints):
             category, score = "network", 55
             reasons.append("Sysmon Event 22: DNS-запрос к домену, связанному с mining-pool")
             if any(token in image.casefold() for token in ("\\temp\\", "\\downloads\\", "\\public\\")):
