@@ -80,7 +80,7 @@ class App(tk.Tk):
         self._page_frames: dict[str, tk.Frame] = {}
         self._built_pages: set[str] = set()
         self.current_page = "home"
-        self.monitor = NetworkMonitor(self._on_network_event, interval=2.5, quarantine_dir=QUARANTINE)
+        self.monitor = NetworkMonitor(self._on_network_event, interval=3.0, quarantine_dir=QUARANTINE)
         self.monitor.auto_block = self.auto_protect_enabled
         self.monitor.auto_quarantine = self.auto_protect_enabled
 
@@ -612,8 +612,8 @@ class App(tk.Tk):
         head.pack(fill="x", padx=16, pady=(14, 8))
         tk.Label(head, text="ЖИВЫЕ СОЕДИНЕНИЯ", bg=PANEL, fg=TEXT,
                  font=("Segoe UI Semibold", 11)).pack(side="left")
-        tk.Label(panel, text="Показываются IP/порты, процессы и поведенческие сигналы стиллеров/майнеров. Содержимое HTTPS, cookies и пароли не перехватываются.",
-                 bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=16, pady=(0, 8))
+        tk.Label(panel, text="Потоки TCP/UDP и PID проверяются регулярно. При установленном и настроенном Sysmon дополнительно читаются события процессов, доступа к LSASS/браузерам, DNS, сети и Run-ключей. Содержимое HTTPS не расшифровывается.",
+                 bg=PANEL, fg=MUTED, font=("Segoe UI", 9), wraplength=1040, justify="left").pack(anchor="w", padx=16, pady=(0, 8))
         columns = ("time", "process", "pid", "destination", "risk", "status", "action")
         self.net_tree = ttk.Treeview(panel, columns=columns, show="headings")
         for key, title, width in [
@@ -705,8 +705,16 @@ class App(tk.Tk):
                  bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=16, pady=(0, 13))
         body = tk.Frame(self.page_host, bg=PANEL, highlightthickness=1, highlightbackground=BORDER)
         body.pack(fill="both", expand=True)
+        searchbar = tk.Frame(body, bg=PANEL)
+        searchbar.pack(fill="x", padx=14, pady=(12, 0))
+        self.threat_search_var = tk.StringVar()
+        search_entry = ttk.Entry(searchbar, textvariable=self.threat_search_var)
+        search_entry.pack(side="left", fill="x", expand=True, ipady=5, padx=(0, 8))
+        self._button(searchbar, "НАЙТИ В БАЗЕ", lambda: self._search_threat_text(text), compact=True).pack(side="right")
+        search_entry.bind("<Return>", lambda _event: self._search_threat_text(text))
         text = tk.Text(body, bg=PANEL, fg=TEXT, insertbackground=TEXT, relief="flat",
                        font=("Segoe UI", 9), wrap="word", padx=18, pady=14)
+        self.threat_text = text
         scroll = ttk.Scrollbar(body, orient="vertical", command=text.yview, style="Vertical.TScrollbar")
         text.configure(yscrollcommand=scroll.set)
         scroll.pack(side="right", fill="y")
@@ -744,8 +752,23 @@ class App(tk.Tk):
         text.tag_configure("family", foreground=TEXT, font=("Segoe UI Semibold", 9))
         text.tag_configure("link", foreground=BLUE)
         text.tag_configure("note", foreground=AMBER)
+        text.tag_configure("search_hit", background="#632033", foreground="white")
         text.configure(state="disabled")
         text.bind("<Double-Button-1>", lambda _event: self._open_selected_url(text))
+
+    def _search_threat_text(self, widget):
+        query = self.threat_search_var.get().strip()
+        widget.tag_remove("search_hit", "1.0", "end")
+        if not query:
+            return
+        position = widget.search(query, "1.0", stopindex="end", nocase=True)
+        if not position:
+            self.status.set(f"В базе не найдено: {query}")
+            return
+        end = f"{position}+{len(query)}c"
+        widget.tag_add("search_hit", position, end)
+        widget.see(position)
+        self.status.set(f"Найдено совпадение: {query}")
 
     def _open_selected_url(self, widget):
         try:
@@ -1119,7 +1142,10 @@ class App(tk.Tk):
             self.after(0, self._refresh_quarantine_count)
 
     def _insert_network_row(self, event: NetworkEvent):
-        destination = event.remote_address if event.protocol == "BEHAVIOR" else f"{event.remote_address}:{event.remote_port}"
+        destination = (
+            event.remote_address if event.protocol == "BEHAVIOR" or event.protocol.startswith("SYSMON")
+            else f"{event.remote_address}:{event.remote_port}"
+        )
         reasons = "; ".join(event.reasons) if event.reasons else (
             "Действительная подпись и ожидаемый путь" if event.trusted_application else "Внешнее соединение"
         )
@@ -1166,6 +1192,10 @@ class App(tk.Tk):
         if self.monitor.last_error:
             self.live_label.configure(text="● МОНИТОРИНГ ОГРАНИЧЕН", fg=AMBER)
             self.status.set(f"Нет полного доступа к сетевым соединениям: {self.monitor.last_error}")
+        elif self.monitor.sysmon_available:
+            self.live_label.configure(text="● NETWORK + SYSMON", fg=GREEN)
+        elif self.monitor.sysmon_error and os.name == "nt":
+            self.live_label.configure(text="● NETWORK · SYSMON OFF", fg=AMBER)
         else:
             self.live_label.configure(text="● МОНИТОРИНГ АКТИВЕН", fg=GREEN)
         self.after(3000, self._refresh_status)
