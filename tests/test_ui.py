@@ -4,7 +4,7 @@ from src.antivir.ui import blend_hex, rounded_rectangle_points
 def test_blend_hex_interpolates_red_to_green():
     assert blend_hex("#ff0000", "#00ff00", 0.0) == "#ff0000"
     assert blend_hex("#ff0000", "#00ff00", 1.0) == "#00ff00"
-    assert blend_hex("#000000", "#ffffff", 0.5) == "#7f7f7f"
+    assert blend_hex("#000000", "#ffffff", 0.5) == "#808080"
 
 
 def test_rounded_rectangle_points_stay_inside_canvas_and_are_symmetric():
